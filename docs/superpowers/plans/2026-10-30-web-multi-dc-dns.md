@@ -25,10 +25,10 @@
 
 **Interface:** officialSelectionPolicy{Datacenters []string, MaxLatencyMS int, MinSpeedMB float64, Limit int}; selectOfficialResults(results []TestResult, policy officialSelectionPolicy) ([]TestResult, error). Normalize/validate DC codes; expose a reusable normalization helper if needed. Do not infer task completion from speed strings.
 
-- [ ] Write failing table-driven tests: FRA/SJC union, HKG exclusion, latency/speed boundaries, invalid/NaN/infinite/negative values, invalid IPs/DCs/limits, failed/unmeasured speed, duplicates, total cap=10, deterministic ties, fewer/empty results, and no input mutation.
-- [ ] Implement a pure selector with numeric qualification, speed-desc/latency-asc/IP tie sorting, IP normalization/deduplication, and total cap after filtering. Do not touch scanning, server, frontend, or CLI.
-- [ ] Run tests/vet/builds and report exact API/data-field decisions for Task 2.
-- [ ] Controller reviews, records evidence, commits and pushes feat: add shared Web result selection.
+- [x] Write failing table-driven tests: FRA/SJC union, HKG exclusion, latency/speed boundaries, invalid/NaN/infinite/negative values, invalid IPs/DCs/limits, failed/unmeasured speed, duplicates, total cap=10, deterministic ties, fewer/empty results, and no input mutation.
+- [x] Implement a pure selector with numeric qualification, speed-desc/latency-asc/IP tie sorting, IP normalization/deduplication, and total cap after filtering. Do not touch scanning, server, frontend, or CLI.
+- [x] Run tests/vet/builds and report exact API/data-field decisions for Task 2.
+- [x] Controller reviews, records evidence, commits and pushes feat: add shared Web result selection.
 
 ## Task 2: Backend-Owned Web Batch and Multi-Selection UI
 
@@ -72,4 +72,3 @@
 - Step 0: SSH Host yidu456 authenticated successfully. Native managed worktree rejected nested sourceRoot; used an isolated Git worktree at the explicit path above, based on target beta. Original main checkout is untouched.
 - Go 1.26.2 downloaded from go.dev and SHA256 verified against official metadata. Baseline passed: go test ./..., go vet ./..., Windows and Linux builds.
 - Initial CLI-first plan is superseded by this Web-first plan following the user's latest instruction. Credentials and real DNS configuration must be fully editable/testable in the Web version, not mock buttons.
-

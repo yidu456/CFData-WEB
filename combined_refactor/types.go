@@ -88,6 +88,9 @@ type TestResult struct {
 	AvgLatency time.Duration
 	LossRate   float64
 	Speed      string
+	// MeasuredSpeedMB retains the numeric result used by selection; Speed remains the display value.
+	MeasuredSpeedMB float64 `json:"-"`
+	SpeedMeasured   bool    `json:"-"`
 }
 
 type iptestResult struct {
