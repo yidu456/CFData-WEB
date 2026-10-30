@@ -43,7 +43,8 @@
 **Consumes:** Windows DPAPI basic-config store and Task1 dedicated Huawei view.
 **Produces:** explicit encrypted-save action, truthful encryption capability/status/path, no plaintext persistence fallback on unsupported hosts.
 
-- [ ] Trace configure/load/status/save/error/masking callers; failing tests for explicit encryption request without cloud writes, full basic-config ciphertext/reload/overwrite/tamper, failure preserves state/file and unsupported persistence fails closed.
-- [ ] Reuse DPAPI/file; add only necessary capability metadata and clear Save Encrypted versus memory Apply UI. Keep blank preservation, existing Windows ciphertext and sanitized responses. No main-config/export integration or encryption key manager.
-- [ ] Verify unit/frontend/browser flows plus whole-branch review; no live credentials/provider mutations. Document bound-user portability and non-Windows memory-only limitation.
-- [ ] Controller commit/push feat: expose encrypted Huawei configuration saving; rebuild and launch separate loopback preview, verify HTTP and fresh UI; preserve original process/EXE.
+- [x] Trace configure/load/status/save/error/masking callers; failing tests for explicit encryption request without cloud writes, full basic-config ciphertext/reload/overwrite/tamper, failure preserves state/file and unsupported persistence fails closed.
+- [x] Reuse DPAPI/file; add only necessary capability metadata and clear Save Encrypted versus memory Apply UI. Keep blank preservation, existing Windows ciphertext and sanitized responses. No main-config/export integration or encryption key manager.
+- [x] Verify unit/frontend/browser flows plus whole-branch review; no live credentials/provider mutations. Document bound-user portability and non-Windows memory-only limitation.
+- [x] Controller review/verify/build and commit/push feat: expose encrypted Huawei configuration saving; preserve original process/EXE.
+- [ ] Launch separate loopback preview and verify live HTTP/UI. Both process-launch attempts were blocked by the execution tool policy; no process was started or stopped. Built EXE is ready for manual launch with `-host 127.0.0.1 -port 13336`.

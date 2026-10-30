@@ -11,7 +11,7 @@ function extract(name) {
 }
 const elements = {};
 let focused;
-for (const id of ['resultModalMask', 'resultModalTitle', 'resultFormat', 'resultFileName', 'resultIPTypeFilterField', 'resultIPTypeFilter', 'resultQualifiedFilterField', 'resultQualifiedFilter', 'resultExportChoice', 'resultGitHubChoice', 'resultEdgetunnelChoice', 'resultHuaweiChoice', 'resultBack', 'githubAccountSelect', 'settingsMenu', 'settingsToggle', 'huaweiModalMask', 'huaweiAK', 'huaweiSK', 'huaweiBack', 'huaweiConfigStatus', 'noticeCardMask', 'huaweiDNSStatus', 'huaweiConfirm', 'huaweiRegion', 'huaweiProjectID']) {
+for (const id of ['resultModalMask', 'resultModalTitle', 'resultFormat', 'resultFileName', 'resultIPTypeFilterField', 'resultIPTypeFilter', 'resultQualifiedFilterField', 'resultQualifiedFilter', 'resultExportChoice', 'resultGitHubChoice', 'resultEdgetunnelChoice', 'resultHuaweiChoice', 'resultBack', 'githubAccountSelect', 'settingsMenu', 'settingsToggle', 'huaweiModalMask', 'huaweiAK', 'huaweiSK', 'huaweiBack', 'huaweiConfigStatus', 'huaweiSaveEncrypted', 'huaweiSaveStatus', 'noticeCardMask', 'huaweiDNSStatus', 'huaweiConfirm', 'huaweiRegion', 'huaweiProjectID']) {
   const classes = new Set();
   elements[id] = { value: '', style: {}, dataset: {}, textContent: '', focus() { focused = id; }, classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } };
 }

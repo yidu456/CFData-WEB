@@ -2363,10 +2363,9 @@
                     <div class="modal-field"><label for="huaweiProjectID">所选区域的 Project ID（必填）</label><input id="huaweiProjectID" type="text" autocomplete="off" maxlength="32" placeholder="32 位十六进制项目 ID"></div>
                     <div class="modal-field full">
                         <p style="font-size:12px;color:var(--text-secondary);">使用 DNS 官方 BasicCredentials。项目 ID 可从华为云「我的凭证 / API 凭证」获取，需与区域对应；不自动访问 IAM，不接受自定义签名地址。</p>
-                        <label class="inline-check"><input id="huaweiPersist" type="checkbox"> 本次应用时明确保存到后端用户私有目录（Windows 用户 DPAPI；Linux 0700/0600）</label>
-                        <p style="font-size:12px;color:var(--text-secondary);">默认仅内存；不勾选不会覆盖已保存文件，重启会恢复上次明确保存的配置。</p>
+                        <p style="font-size:12px;color:var(--text-secondary);">「应用配置（仅内存）」不覆盖已保存文件；「保存加密配置」同时应用并加密保存 AK、SK、区域与 Project ID。Windows 使用当前用户 DPAPI，文件不可直接供其他用户或机器使用；其他平台仅支持内存应用，不新写明文文件。重启恢复上次保存的配置。</p>
                     </div>
-                    <div class="modal-field full"><div class="modal-actions"><button class="action-btn" onclick="saveHuaweiConfig()">应用服务配置</button><button class="action-btn" onclick="loadHuaweiConfig()">重读后端配置</button><button class="action-btn" onclick="discoverHuaweiZones(true)">测试连接（只读）</button><button class="action-btn" onclick="discoverHuaweiZones(false)">发现公网域名</button></div></div>
+                    <div class="modal-field full"><div class="modal-actions"><button class="action-btn" id="huaweiApply" onclick="saveHuaweiConfig()">应用配置（仅内存）</button><button class="action-btn export-btn" id="huaweiSaveEncrypted" onclick="saveHuaweiConfig(true)" disabled>保存加密配置</button><button class="action-btn" onclick="loadHuaweiConfig()">读取当前后端配置</button><button class="action-btn" onclick="discoverHuaweiZones(true)">测试连接（只读）</button><button class="action-btn" onclick="discoverHuaweiZones(false)">发现公网域名</button></div><div class="upload-status" id="huaweiSaveStatus" role="status" aria-live="polite">应用与保存均不访问云端，也不更新 DNS</div></div>
                     <div class="modal-field"><label for="huaweiZone">公网域名</label><select id="huaweiZone" onchange="discoverHuaweiRecords()"><option value="">先测试连接或发现域名</option></select></div>
                     <div class="modal-field"><label for="huaweiRecord">现有 A / AAAA 记录集</label><select id="huaweiRecord" onchange="selectHuaweiRecord()"><option value="">先选择域名</option></select></div>
                     <div class="modal-field full"><label>目标身份、线路和 TTL</label><pre class="result-preview" id="huaweiTarget">尚未选择记录集</pre></div>
@@ -6530,18 +6529,25 @@
             return resultHuaweiLoading;
         }
 
-        function saveHuaweiConfig() {
+        function saveHuaweiConfig(persist = false) {
+            if (persist && document.getElementById('huaweiSaveEncrypted').disabled) return showNoticeCard('当前后端不支持加密保存或能力尚未读取；请使用仅内存应用');
             const data = {
                 ak: document.getElementById('huaweiAK').value.trim(),
                 sk: document.getElementById('huaweiSK').value.trim(),
                 region: document.getElementById('huaweiRegion').value,
                 projectId: document.getElementById('huaweiProjectID').value.trim(),
-                persist: document.getElementById('huaweiPersist').checked,
+                persist,
             };
-            wsSend({ type: 'huawei_config_set', data });
+            const status = document.getElementById('huaweiSaveStatus');
+            if (!wsSend({ type: 'huawei_config_set', data })) {
+                status.textContent = '连接未就绪；配置未发送，请重连后重试';
+                status.className = 'upload-status error';
+                return;
+            }
+            status.textContent = persist ? '正在请求加密保存；不访问云端' : '正在应用到内存；不覆盖私有文件';
+            status.className = 'upload-status';
             document.getElementById('huaweiAK').value = '';
             document.getElementById('huaweiSK').value = '';
-            document.getElementById('huaweiConfirm').disabled = true;
         }
 
         function discoverHuaweiZones(testOnly) {
@@ -6610,6 +6616,12 @@
                 return true;
             }
             if (msg.type === 'huawei_error') {
+                if (msg.data.action === 'huawei_config_set') {
+                    const status = document.getElementById('huaweiSaveStatus');
+                    status.textContent = msg.data.message || '配置应用或加密保存失败；保留上次有效配置和文件';
+                    status.className = 'upload-status error';
+                    return true;
+                }
                 if (msg.data.action === 'huawei_config_get') {
                     resultHuaweiLoading = false;
                     document.getElementById('huaweiConfigStatus').textContent = msg.data.message || '读取配置失败；请返回重试或重读后端配置';
@@ -6636,8 +6648,11 @@
                 document.getElementById('huaweiRegion').innerHTML = data.regions.map(id => `<option value="${escapeHTML(id)}">${escapeHTML(id)} · dns.${escapeHTML(id)}.myhuaweicloud.com</option>`).join('');
                 document.getElementById('huaweiRegion').value = data.region || 'cn-north-4';
                 document.getElementById('huaweiProjectID').value = data.projectId || '';
-                document.getElementById('huaweiConfigStatus').textContent = `${data.maskedAK || '未配置 AK'} · SK ${data.hasSecret ? '已配置' : '未配置'} · ${data.persisted ? '存在明确保存的私有配置' : '当前仅内存'}；AK/SK 留空保留，掩码不回填输入框`;
-                status.textContent = action === 'huawei_config_set' ? '服务配置已应用；下一步测试只读连接' : '后端配置已读取';
+                document.getElementById('huaweiSaveEncrypted').disabled = data.encryptedSaveSupported !== true;
+                const fileStates = { absent: '无私有文件', encrypted: '私有文件存在（上次保存/加载验证为加密）', 'legacy-plaintext': '旧版明文文件（上次加载验证，未加密）', invalid: '上次加载验证失败；私有文件无效，未加载', unavailable: '私有文件不可读取', unverified: '私有文件未验证' };
+                document.getElementById('huaweiConfigStatus').textContent = `${data.maskedAK || '未配置 AK'} · SK ${data.hasSecret ? '已配置' : '未配置'} · ${data.persisted ? '当前配置与上次加密保存一致' : '当前配置仅内存或来自旧文件（未匹配上次加密保存）'} · ${fileStates[data.privateFileStatus] || '私有文件状态未知'} · ${data.encryptedSaveSupported ? '支持 Windows 当前用户 DPAPI 加密保存' : '当前后端不支持加密保存'} · 路径：${data.privatePath || '不可用'}；AK/SK 留空保留，掩码不回填输入框`;
+                document.getElementById('huaweiSaveStatus').textContent = action === 'huawei_config_set' ? (data.persisted ? '配置已应用；与上次加密保存一致；未访问云端' : '配置已应用到内存；未覆盖私有文件或访问云端') : '已读取当前后端配置；未访问云端';
+                document.getElementById('huaweiSaveStatus').className = 'upload-status';
                 if (action === 'huawei_config_set') {
                     document.getElementById('huaweiAuto').checked = false;
                     document.getElementById('huaweiZone').innerHTML = '<option value="">重新发现公网域名</option>';

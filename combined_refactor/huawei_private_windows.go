@@ -5,6 +5,8 @@ import (
 	"unsafe"
 )
 
+const huaweiPrivateEncryptionSupported = true
+
 func protectHuaweiPrivate(data []byte) ([]byte, error)   { return huaweiDPAPI(data, true) }
 func unprotectHuaweiPrivate(data []byte) ([]byte, error) { return huaweiDPAPI(data, false) }
 func huaweiDPAPI(data []byte, encrypt bool) ([]byte, error) {

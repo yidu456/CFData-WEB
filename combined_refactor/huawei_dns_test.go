@@ -35,6 +35,12 @@ func huaweiResponse(r *http.Request, body string) (*http.Response, error) {
 
 func TestHuaweiCredentialsPreservedRedactedAndPrivateReload(t *testing.T) {
 	s := huaweiTestStore(t, nil)
+	if runtime.GOOS != "windows" {
+		if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err == nil {
+			t.Fatal("unsupported encrypted persistence succeeded")
+		}
+		return
+	}
 	if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,18 +63,221 @@ func TestHuaweiCredentialsPreservedRedactedAndPrivateReload(t *testing.T) {
 		if err != nil || strings.Contains(string(raw), "SK_PRIVATE_123456789") {
 			t.Fatal("Windows private file is not encrypted")
 		}
-	} else {
-		file, _ := os.Stat(s.path)
-		dir, _ := os.Stat(filepath.Dir(s.path))
-		if file.Mode().Perm() != 0600 || dir.Mode().Perm() != 0700 {
-			t.Fatal("private configuration permissions are too broad")
-		}
 	}
 	if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err != nil {
 		t.Fatalf("explicit overwrite of saved private config failed: %v", err)
 	}
 	if err := s.configure(huaweiConfigRequest{Region: "https://attacker.test", ProjectID: "x"}); err == nil {
 		t.Fatal("arbitrary signed endpoint accepted")
+	}
+}
+
+func huaweiStatusMap(t *testing.T, s *huaweiDNSStore) map[string]interface{} {
+	t.Helper()
+	raw, err := json.Marshal(s.status())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status map[string]interface{}
+	if err := json.Unmarshal(raw, &status); err != nil {
+		t.Fatal(err)
+	}
+	return status
+}
+
+func TestHuaweiEncryptedSaveStatusTracksAppliedConfigAndFile(t *testing.T) {
+	s := huaweiTestStore(t, nil)
+	status := huaweiStatusMap(t, s)
+	if status["encryptedSaveSupported"] != (runtime.GOOS == "windows") || status["privatePath"] != s.path || status["privateFileStatus"] != "absent" || status["persisted"] != false {
+		t.Fatalf("incorrect initial capability/status: %v", status)
+	}
+	if runtime.GOOS != "windows" {
+		return
+	}
+	if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.configure(huaweiConfigRequest{Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}); err != nil {
+		t.Fatal(err)
+	}
+	status = huaweiStatusMap(t, s)
+	if status["persisted"] != false || status["privateFileStatus"] != "encrypted" {
+		t.Fatalf("memory-only change misreported as saved: %v", status)
+	}
+	if err := s.load(); err != nil {
+		t.Fatal(err)
+	}
+	status = huaweiStatusMap(t, s)
+	if status["persisted"] != true || status["region"] != "cn-north-4" {
+		t.Fatalf("reload did not restore saved config: %v", status)
+	}
+	if err := os.Remove(s.path); err != nil {
+		t.Fatal(err)
+	}
+	status = huaweiStatusMap(t, s)
+	if status["persisted"] != false || status["privateFileStatus"] != "absent" {
+		t.Fatal("deleted private file still reported saved")
+	}
+}
+
+func TestHuaweiEncryptedConfigCiphertextOverwriteAndTamperPreserveMemory(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("real current-user DPAPI requires Windows")
+	}
+	s := huaweiTestStore(t, nil)
+	for _, c := range []huaweiConfigRequest{
+		{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true},
+		{AK: "AK_REPLACED_987654321", SK: "SK_REPLACED_987654321", Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Persist: true},
+	} {
+		if err := s.configure(c); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(s.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, plain := range []string{s.config.AK, s.config.SK, c.Region, c.ProjectID} {
+			if strings.Contains(string(raw), plain) {
+				t.Fatal("basic configuration escaped ciphertext")
+			}
+		}
+		loaded := &huaweiDNSStore{path: s.path}
+		if err := loaded.load(); err != nil || loaded.config != s.config {
+			t.Fatal("ciphertext did not reload full configuration")
+		}
+	}
+	before, revision := s.config, s.revision
+	tampered := []byte("not DPAPI ciphertext")
+	if err := os.WriteFile(s.path, tampered, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.load(); err == nil || s.config != before || s.revision != revision {
+		t.Fatal("failed decrypt replaced last good memory configuration")
+	}
+	raw, _ := os.ReadFile(s.path)
+	if string(raw) != string(tampered) || huaweiStatusMap(t, s)["persisted"] != false {
+		t.Fatal("failed reload rewrote file or reported applied config as saved")
+	}
+}
+
+func TestHuaweiFailedSavePreservesConfigAndPrivateFile(t *testing.T) {
+	s := huaweiTestStore(t, nil)
+	if runtime.GOOS == "windows" {
+		if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	goodPath := s.path
+	goodFile, _ := os.ReadFile(goodPath)
+	before, revision := s.config, s.revision
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s.path = filepath.Join(blocker, "huawei-dns.private")
+	err := s.configure(huaweiConfigRequest{AK: "AK_FAILED_SECRET", SK: "SK_FAILED_SECRET", Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Persist: true})
+	if err == nil || s.config != before || s.revision != revision || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), blocker) {
+		t.Fatal("failed save lost state or exposed request/path")
+	}
+	if got, _ := os.ReadFile(goodPath); string(got) != string(goodFile) {
+		t.Fatal("failed save changed last good private file")
+	}
+	if got, _ := os.ReadFile(blocker); string(got) != "keep" {
+		t.Fatal("failed save replaced existing file")
+	}
+}
+
+func TestHuaweiFailedOverwritePreservesSameCiphertextFile(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows file sharing and DPAPI")
+	}
+	s := huaweiTestStore(t, nil)
+	if err := s.configure(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: true}); err != nil {
+		t.Fatal(err)
+	}
+	before, revision := s.config, s.revision
+	ciphertext, err := os.ReadFile(s.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Go's Windows file handle does not share deletion, so replacement must fail.
+	locked, err := os.Open(s.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locked.Close()
+	if err := s.configure(huaweiConfigRequest{Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Persist: true}); err == nil {
+		t.Fatal("overwrite unexpectedly succeeded while destination was locked")
+	}
+	if s.config != before || s.revision != revision {
+		t.Fatal("failed overwrite changed last good memory config")
+	}
+	if got, err := os.ReadFile(s.path); err != nil || string(got) != string(ciphertext) {
+		t.Fatal("failed overwrite changed original ciphertext")
+	}
+	files, err := filepath.Glob(filepath.Join(filepath.Dir(s.path), ".huawei-private-*"))
+	if err != nil || len(files) != 0 {
+		t.Fatal("failed overwrite left temporary ciphertext behind")
+	}
+}
+
+func TestHuaweiInvalidDecryptedConfigPreservesMemoryAndFile(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("real current-user DPAPI requires Windows")
+	}
+	s := huaweiTestStore(t, nil)
+	before, revision := s.config, s.revision
+	for _, raw := range []string{"not JSON", `{"ak":"new-ak","sk":"new-sk","region":"https://attacker.test","projectId":"0123456789abcdef0123456789abcdef"}`} {
+		ciphertext, err := protectHuaweiPrivate([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(s.path, ciphertext, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.load(); err == nil || s.config != before || s.revision != revision {
+			t.Fatal("invalid decrypted config replaced last good memory")
+		}
+		if got, err := os.ReadFile(s.path); err != nil || string(got) != string(ciphertext) {
+			t.Fatal("invalid decrypted config rewrote private file")
+		}
+	}
+}
+
+func TestHuaweiUnsupportedPersistencePreservesLegacyReadsAndMemory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("legacy plaintext compatibility is non-Windows only")
+	}
+	s := huaweiTestStore(t, nil)
+	if err := os.MkdirAll(filepath.Dir(s.path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	legacy, _ := json.Marshal(s.config)
+	if err := os.WriteFile(s.path, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.load(); err != nil {
+		t.Fatal(err)
+	}
+	status := huaweiStatusMap(t, s)
+	if status["encryptedSaveSupported"] != false || status["persisted"] != false || status["privateFileStatus"] != "legacy-plaintext" {
+		t.Fatalf("legacy plaintext called encrypted: %v", status)
+	}
+	before := s.config
+	if err := s.configure(huaweiConfigRequest{Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Persist: true}); err == nil || s.config != before {
+		t.Fatal("unsupported save succeeded or replaced memory")
+	}
+	if err := saveHuaweiPrivate(s.path, []byte("replacement")); err == nil {
+		t.Fatal("direct save boundary permits unsupported plaintext")
+	}
+	if got, _ := os.ReadFile(s.path); string(got) != string(legacy) {
+		t.Fatal("legacy file silently converted or overwritten")
+	}
+	if err := s.configure(huaweiConfigRequest{Region: "cn-east-3", ProjectID: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}); err != nil {
+		t.Fatal("unsupported persistence also disabled memory use")
 	}
 }
 

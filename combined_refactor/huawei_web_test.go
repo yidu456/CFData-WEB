@@ -7,12 +7,44 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestHuaweiExplicitEncryptedSaveNeverCallsCloudOrReturnsSecrets(t *testing.T) {
+	calls := 0
+	store := huaweiTestStore(t, func(r *http.Request) (*http.Response, error) {
+		calls++
+		return huaweiResponse(r, huaweiRecordFixture)
+	})
+	var kind string
+	var payload interface{}
+	s := &appSession{emit: func(k string, p interface{}) { kind, payload = k, p }}
+	for _, persist := range []bool{false, true} {
+		request, _ := json.Marshal(huaweiConfigRequest{Region: "cn-north-4", ProjectID: "0123456789abcdef0123456789abcdef", Persist: persist})
+		if !handleHuaweiWebAction(context.Background(), s, store, "huawei_config_set", request, func() bool { return true }) {
+			t.Fatal("configuration action unhandled")
+		}
+		if calls != 0 {
+			t.Fatal("saving config contacted cloud")
+		}
+		raw, _ := json.Marshal(payload)
+		if strings.Contains(string(raw), "AK_PRIVATE_123456789") || strings.Contains(string(raw), "SK_PRIVATE") {
+			t.Fatal("configuration response exposed credentials")
+		}
+		if persist && runtime.GOOS != "windows" {
+			if kind != "huawei_error" {
+				t.Fatal("unsupported save did not fail closed")
+			}
+		} else if kind != "huawei_response" {
+			t.Fatal("configuration failed")
+		}
+	}
+}
 
 func TestHuaweiAllActionsRequireStrictOriginAndLocalOrExistingAuth(t *testing.T) {
 	oldUser, oldPass := webUser, webPassword

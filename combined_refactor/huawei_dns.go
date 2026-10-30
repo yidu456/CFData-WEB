@@ -47,12 +47,15 @@ type huaweiConfigRequest struct {
 }
 
 type huaweiConfigStatus struct {
-	MaskedAK  string   `json:"maskedAK"`
-	HasSecret bool     `json:"hasSecret"`
-	Region    string   `json:"region"`
-	ProjectID string   `json:"projectId"`
-	Persisted bool     `json:"persisted"`
-	Regions   []string `json:"regions"`
+	MaskedAK               string   `json:"maskedAK"`
+	HasSecret              bool     `json:"hasSecret"`
+	Region                 string   `json:"region"`
+	ProjectID              string   `json:"projectId"`
+	Persisted              bool     `json:"persisted"`
+	EncryptedSaveSupported bool     `json:"encryptedSaveSupported"`
+	PrivatePath            string   `json:"privatePath"`
+	PrivateFileStatus      string   `json:"privateFileStatus"`
+	Regions                []string `json:"regions"`
 }
 
 type huaweiZone struct {
@@ -82,12 +85,13 @@ type huaweiPreview struct {
 }
 
 type huaweiDNSStore struct {
-	mu        sync.Mutex
-	config    huaweiConfigRequest
-	revision  uint64
-	persisted bool
-	path      string
-	transport http.RoundTripper
+	mu                sync.Mutex
+	config            huaweiConfigRequest
+	revision          uint64
+	savedConfig       huaweiConfigRequest
+	privateFileStatus string
+	path              string
+	transport         http.RoundTripper
 }
 
 var webHuaweiDNS = &huaweiDNSStore{}
@@ -122,6 +126,9 @@ func (s *huaweiDNSStore) configure(c huaweiConfigRequest) error {
 		return err
 	}
 	if c.Persist {
+		if !huaweiPrivateEncryptionSupported {
+			return errors.New("encrypted Huawei configuration saving is unsupported on this platform; use memory-only Apply")
+		}
 		raw, err := json.Marshal(c)
 		if err != nil {
 			return errors.New("private configuration encoding failed")
@@ -129,7 +136,9 @@ func (s *huaweiDNSStore) configure(c huaweiConfigRequest) error {
 		if err := saveHuaweiPrivate(s.path, raw); err != nil {
 			return errors.New("private configuration save failed")
 		}
-		s.persisted = true
+		s.savedConfig = c
+		s.savedConfig.Persist = false
+		s.privateFileStatus = "encrypted"
 	}
 	s.config = c
 	s.revision++
@@ -137,33 +146,52 @@ func (s *huaweiDNSStore) configure(c huaweiConfigRequest) error {
 }
 
 func (s *huaweiDNSStore) load() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
+		s.privateFileStatus = "absent"
 		return nil
 	}
 	if err != nil {
+		s.privateFileStatus = "unavailable"
 		return errors.New("private configuration read failed")
 	}
 	raw, err = unprotectHuaweiPrivate(raw)
 	if err != nil {
+		s.privateFileStatus = "invalid"
 		return errors.New("private configuration decryption failed")
 	}
 	var c huaweiConfigRequest
 	if json.Unmarshal(raw, &c) != nil || validateHuaweiConfig(c) != nil {
+		s.privateFileStatus = "invalid"
 		return errors.New("invalid private configuration")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.config = c
 	s.revision++
-	s.persisted = true
+	s.savedConfig = c
+	s.savedConfig.Persist = false
+	s.privateFileStatus = "legacy-plaintext"
+	if huaweiPrivateEncryptionSupported {
+		s.privateFileStatus = "encrypted"
+	}
 	return nil
 }
 
 func (s *huaweiDNSStore) status() huaweiConfigStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	status := huaweiConfigStatus{HasSecret: s.config.SK != "", Region: s.config.Region, ProjectID: s.config.ProjectID, Persisted: s.persisted, Regions: []string{}}
+	fileStatus := s.privateFileStatus
+	if info, err := os.Stat(s.path); errors.Is(err, os.ErrNotExist) || s.path == "" {
+		fileStatus = "absent"
+	} else if err != nil || !info.Mode().IsRegular() {
+		fileStatus = "unavailable"
+	} else if fileStatus == "" || fileStatus == "absent" {
+		fileStatus = "unverified"
+	}
+	current := s.config
+	current.Persist = false
+	status := huaweiConfigStatus{HasSecret: s.config.SK != "", Region: s.config.Region, ProjectID: s.config.ProjectID, Persisted: fileStatus == "encrypted" && current == s.savedConfig, EncryptedSaveSupported: huaweiPrivateEncryptionSupported && s.path != "", PrivatePath: s.path, PrivateFileStatus: fileStatus, Regions: []string{}}
 	if s.config.AK != "" {
 		status.MaskedAK = "configured"
 		if len(s.config.AK) > 8 {

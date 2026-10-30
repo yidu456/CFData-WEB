@@ -23,7 +23,8 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
       ? route.fulfill({ contentType: 'text/html; charset=utf-8', body: html }) : route.abort());
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
     const page = await context.newPage();
-    let socket, connections = 0, batchID = 0, resultCount = 10, holdBatch = false, previewError = false, previewChanged = true, failNextConfigRead = false;
+    let socket, connections = 0, batchID = 0, resultCount = 10, holdBatch = false, previewError = false, previewChanged = true, failNextConfigRead = false, failNextConfigSave = false;
+    let encryptedSaveSupported = true, privateFileStatus = 'absent', appliedConfigSaved = false;
     const send = (type, data) => socket.send(JSON.stringify({ type, data }));
     const response = (action, data) => send('huawei_response', { action, data });
     await page.routeWebSocket('**/*', routed => {
@@ -51,7 +52,16 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
             if (request.type === 'huawei_config_get' && failNextConfigRead) {
               failNextConfigRead = false;
               send('huawei_error', { action: request.type, message: 'Mock initial config read failed' });
-            } else response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: request.data.persist || false, regions: ['cn-north-4', 'cn-east-3'] });
+            } else if (request.type === 'huawei_config_set' && failNextConfigSave) {
+              failNextConfigSave = false;
+              send('huawei_error', { action: request.type, message: 'Mock encrypted save failed; last good config retained' });
+            } else {
+              if (request.type === 'huawei_config_set') {
+                appliedConfigSaved = request.data.persist === true;
+                if (appliedConfigSaved) privateFileStatus = 'encrypted';
+              }
+              response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: appliedConfigSaved, encryptedSaveSupported, privatePath: 'C:/Mock User/Config/cfdata-web/huawei-dns.private', privateFileStatus, regions: ['cn-north-4', 'cn-east-3'] });
+            }
             break;
           case 'huawei_test': case 'huawei_zones': response(request.type, [{ id: 'zone1', name: 'example.com.' }]); break;
           case 'huawei_records': response(request.type, [target]); break;
@@ -406,14 +416,49 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.equal(await page.locator('#huaweiAK').inputValue(), '');
     assert.equal(await page.locator('#huaweiSK').inputValue(), '');
     assert.equal(await page.locator('#huaweiAK').evaluate(el => el === document.activeElement), true);
-    assert.equal(await page.locator('#huaweiPersist').isChecked(), false);
+    assert.equal(await page.getByRole('button', { name: '应用配置（仅内存）', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: '保存加密配置', exact: true }).count(), 1);
+    assert.equal(await page.locator('#huaweiSaveEncrypted').isDisabled(), false);
+    const cloudRequestsBeforeSave = requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$|upload|publish$/.test(r.type)).length;
     await page.locator('#huaweiAK').fill('MOCK_AK_PRIVATE_123456789');
     await page.locator('#huaweiSK').fill('MOCK_SK_PRIVATE_123456789');
-    await page.evaluate(() => saveHuaweiConfig());
+    await page.locator('#huaweiApply').click();
     await page.waitForFunction(() => document.getElementById('huaweiAK').value === '' && document.getElementById('huaweiSK').value === '');
-    await page.locator('#huaweiPersist').check();
-    await page.evaluate(() => saveHuaweiConfig());
-    await page.waitForFunction(() => document.getElementById('huaweiConfigStatus').textContent.includes('6789'));
+    assert.equal(requests.filter(r => r.type === 'huawei_config_set').at(-1).data.persist, false);
+    await page.locator('#huaweiSaveEncrypted').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('与上次加密保存一致'));
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /当前配置与上次加密保存一致/);
+    const goodConfigStatus = await page.locator('#huaweiConfigStatus').textContent();
+    failNextConfigSave = true;
+    await page.locator('#huaweiSaveEncrypted').click();
+    await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('Mock encrypted save failed'));
+    assert.equal(await page.locator('#huaweiConfigStatus').textContent(), goodConfigStatus, 'failed save replaced last good status');
+    assert.match(await page.locator('#huaweiSaveStatus').getAttribute('class'), /error/);
+    encryptedSaveSupported = false; privateFileStatus = 'legacy-plaintext'; appliedConfigSaved = false;
+    await page.evaluate(() => loadHuaweiConfig());
+    await page.waitForFunction(() => document.getElementById('huaweiSaveEncrypted').disabled);
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /旧版明文文件（上次加载验证，未加密）/);
+    const unsupportedBefore = requests.length;
+    await page.evaluate(() => saveHuaweiConfig(true));
+    await page.waitForTimeout(30);
+    assert.equal(requests.length, unsupportedBefore, 'unsupported save bypassed capability guard');
+    await page.keyboard.press('Escape');
+    await page.locator('#huaweiApply').click();
+    await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('配置已应用到内存'));
+    assert.equal(requests.filter(r => r.type === 'huawei_config_set').at(-1).data.persist, false);
+    encryptedSaveSupported = true; privateFileStatus = 'encrypted';
+    await page.evaluate(() => loadHuaweiConfig());
+    await page.waitForFunction(() => !document.getElementById('huaweiSaveEncrypted').disabled);
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /当前配置仅内存/);
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /上次保存\/加载验证为加密/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#huaweiSaveEncrypted').click();
+    await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('与上次加密保存一致'));
+    await page.screenshot({ path: path.join(output, 'dns-encrypted-save-mobile.png') });
+    assert.equal(await page.locator('#huaweiModalMask').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'encrypted-save path/status overflows mobile');
+    await page.setViewportSize({ width: 1440, height: 1050 });
+    assert.equal(requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$|upload|publish$/.test(r.type)).length, cloudRequestsBeforeSave, 'config Apply/Save performed a cloud operation');
     await page.evaluate(() => discoverHuaweiZones(true));
     await page.locator('#huaweiZone').selectOption('zone1');
     await page.locator('#huaweiRecord').selectOption('record1');
@@ -545,7 +590,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.equal(replayRequests.filter(r => r.type === 'github_upload').length, 1, 'genuine legacy replay lost manual upload compatibility');
     assert.ok([...requests, ...replayRequests].every(r => r.type !== 'start_task' && r.type !== 'edgetunnel_upload'), 'smoke unexpectedly started scan/edgetunnel flow');
     assert.deepEqual(errors, []);
-    console.log(`Offline Chrome smoke passed: chooser/dedicated views/back/focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, global top10/fewer/empty/cancel, DNS config/discovery/preview/confirmation/errors, independent statuses, reconnect and fresh legacy/provenance replay. Screenshots: ${output}`);
+    console.log(`Offline Chrome smoke passed: chooser/dedicated views/back/focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, global top10/fewer/empty/cancel, explicit memory Apply/encrypted Save/no-cloud/blank keys/failure retention/unsupported legacy status/desktop keyboard/mobile save, DNS discovery/preview/confirmation/errors, independent statuses, reconnect and fresh legacy/provenance replay. Screenshots: ${output}`);
   } finally {
     await browser.close();
   }
