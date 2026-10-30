@@ -92,6 +92,51 @@ CLI 模式（进入交互菜单）：
 4. 扫描完成后选择数据中心继续详细测试。
 5. 在详细测试结果中可单点测速或批量测速。
 
+### Web 多中心排名与华为云 DNS（开发预览）
+
+1. 先扫描发现数据中心，再在顶部下拉框任意勾选多个中心（与数据中心表格同步，支持键盘选择），在扫描结果区点击「测试已选数据中心」。扫描前没有固定 FRA/SJC 名单。
+2. 设置详细延迟上限（ms）、最低下载速度（MB/s）和「最终总数」（默认 10）。所有选中中心内延迟合格的 IP 都测完速度后，跨中心去重，按速度降序、延迟升序排名，取全局前 N；没有每中心配额，少于 N 个合格结果也有效。未发现的中心会明确提示，不会换用其他中心；未测速、失败或不达标的 IP 不入选。
+3. 原有单中心「自动测速」与目标中心仍是独立模式，其合格数量达到上限即可停止；不要把该停止上限与多中心全量测完后的最终总数混淆。
+
+在右上角设置菜单打开「华为云 DNS」面板：
+
+- 输入 AK/SK，选择支持的固定 DNS 区域，并填写该区域的 **Project ID（32 位十六进制，非账号 ID）**。程序使用官方华为云 SDK 与区域项目鉴权，不接受自定义签名端点；凭据应仅有读取公网域名/记录和更新所选记录所需的权限。
+- 默认仅保留于后端内存；显式勾选私有保存后写入操作系统用户配置目录的 `cfdata-web/huawei-dns.private`（Windows 使用当前用户 DPAPI，其他平台使用私有目录/0600 文件）。AK/SK 留空保留已有值，界面只显示 AK 掩码和 SK 是否存在，不会回填密钥。取消保存勾选不会删除先前保存的文件；如需移除，停止程序后删除该私有文件。
+- 「测试连接（只读）」/发现公网域名 → 选择域名 → 选择已有 A/AAAA 记录及线路；核对 Zone ID、Record ID、名称、类型、线路和 TTL。应用配置后须重新发现和选择目标；连接测试本身不写 DNS。
+- 完成同一会话的多中心测试后，点击「预览完成批次」，核对旧/新地址，再点击「确认更新」。更新仅替换所选现有记录的值，保留 TTL、线路等属性，不创建、删除或重建记录。A 仅用 IPv4，AAAA 仅用 IPv6，DNS 值不带端口；地址集合未变或没有匹配地址族时跳过。
+- 如需自动更新，明确勾选「下次多中心测试完成后自动更新此记录集」；GitHub 则复用结果操作面板的账户/仓库配置，可手动上传完成批次或独立勾选下次完成后上传。两项开关与状态相互独立，一项失败不代表另一项失败。多中心发布由后端完成快照决定，不采用浏览器传入的 IP/导出文本。
+
+安全与边界：仅在 `127.0.0.1`/`localhost` 本地访问；如要远程访问，必须同时启用 `-user` 和 `-password`，并保护传输链路，新的配置/发布操作还要求同源。不要将密钥、GitHub Token 或私有配置放入 Git、日志或浏览器配置/结果导出。空结果、失败、取消或失效的批次不会覆盖 DNS；重测、断线、目标/云端状态变化后须重新获取有效完成批次和预览。请求已发出后若超时/断线，云端可能已经应用变更，先只读核对记录或仓库再重试，不能把本地失败视为云端回滚。
+
+这是 Web 优先的开发预览，独立测试构建不覆盖现有生产 EXE；本次未增加对应 CLI 功能或 Windows 定时任务。详细范围见 [Web 多中心与 DNS 说明](docs/superpowers/specs/2026-10-30-web-multi-dc-dns.md)。
+
+### 开发验证（不连接真实云）
+
+在 `combined_refactor/` 使用 `go.mod` 要求的 Go 1.26 工具链（当前验证为 1.26.2）：
+
+```bash
+go test ./...
+go vet ./...
+node web_batch_ui_test.js
+node web_publish_ui_test.js
+node huawei_ui_test.js
+mkdir -p ../release_assets
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../release_assets/cfdata-web-preview.exe .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../release_assets/cfdata-test .
+```
+
+有可用 C 编译器时启用 CGO 另跑 `go test -race ./...`；用 `gofmt -l` 检查本次改动的 Go 文件，不要格式化根目录参考源码或无关旧文件。浏览器烟测需要本机已安装的 Playwright 和 Chrome/Chromium，不新增依赖、不下载浏览器。PowerShell 示例：
+
+```powershell
+$env:NODE_PATH = '<已安装依赖的 node_modules 目录>' # 本地 require("playwright") 已可用时可省略
+$env:CHROME_PATH = '<本机 Chrome/Chromium 可执行文件>' # 已有 Playwright 浏览器时可省略
+$env:QA_OUTPUT_DIR = Join-Path $env:TEMP 'cfdata-web-preview-qa' # 可选，截图默认写入系统临时目录
+node --check tests/web_preview_smoke.cjs
+node tests/web_preview_smoke.cjs
+```
+
+烟测在浏览器内加载真实 HTML，以模拟 WebSocket 验证多选/排名显示、空结果/取消/重连、DNS 配置/预览/确认与独立发布状态、后台重测来源校验、旧结果上传和桌面/手机布局；阻断其他 HTTP(S) 请求，不启动服务、不扫描、不上传真实结果、不修改真实 DNS。Go 测试使用模拟网络验证后端全量测量/排名与发布权限，烟测不能替代真实华为云权限、线路兼容性和网络测速验收。手工预览应使用独立测试 EXE，并显式加 `-host 127.0.0.1`；真实云更新仅在用户自行配置、核对并确认后进行。
+
 ### 非标优选
 
 1. 切换到“非标优选”。

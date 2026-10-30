@@ -63,10 +63,10 @@
 
 **Files:** Add focused browser self-checks/fixtures under tests/ if needed; update README.md and this plan/spec only as required. No CLI/scheduler implementation.
 
-- [ ] Exercise mocked FRA/SJC selection, final top-10, fewer/zero results, DNS configuration/discovery/preview/errors, independent publishing statuses, cancel/reconnect, legacy row tests, and desktop/mobile layout. Inspect screenshots.
-- [ ] Run all Go tests (race where available), vet, formatting/JS checks, Windows/Linux builds, and final connected-path code review. Fix defects with regression tests.
-- [ ] Document credentials, DNS preview/confirmation, speed/latency/count semantics, local-only access, untouched production EXE and deferred CLI work.
-- [ ] Controller commits/pushes test: verify and document Web DNS preview.
+- [x] Exercise mocked FRA/SJC selection, final top-10, fewer/zero results, DNS configuration/discovery/preview/errors, independent publishing statuses, cancel/reconnect, legacy row tests, and desktop/mobile layout. Inspect screenshots.
+- [x] Run all Go tests (race where available), vet, formatting/JS checks, Windows/Linux builds, and final connected-path code review. Fix defects with regression tests.
+- [x] Document credentials, DNS preview/confirmation, speed/latency/count semantics, local-only access, untouched production EXE and deferred CLI work.
+- [x] Controller commits/pushes test: verify and document Web DNS preview.
 - [ ] Start the separate preview build only on loopback, show the URL/build path and commits. Do not configure actual cloud targets or run real updates without the user's input.
 
 ## Execution Status
