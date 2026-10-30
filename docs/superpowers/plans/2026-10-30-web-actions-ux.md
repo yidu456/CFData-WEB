@@ -32,10 +32,10 @@
 **Consumes:** selectedWebDCs, dcList, toggleWebDatacenter, updateWebBatchSelection and Task1 modal navigation unchanged.
 **Produces:** query filter local to discovered options, synchronized 24px table checkboxes with 44px targets and row state.
 
-- [ ] Trace selection/re-render/scan reset/background restore callers; write failing code/city/country/case search, hidden selection retention, no-match/reset/running state tests and click/keyboard/mobile regressions.
-- [ ] Add searchable dropdown and improved scoped checkbox styles/row highlight; no native-control accessibility loss, new selection semantics or scanning logic.
-- [ ] Verify existing single-center action doesn't toggle checkbox and table/dropdown sync; actual Chrome query/click/focus/viewport assertions.
-- [ ] Controller review, verify all suites/vet/scopedfmt/builds; commit/push feat: improve datacenter search and selection controls.
+- [x] Trace selection/re-render/scan reset/background restore callers; write failing code/city/country/case search, hidden selection retention, no-match/reset/running state tests and click/keyboard/mobile regressions.
+- [x] Add searchable dropdown and improved scoped checkbox styles/row highlight; no native-control accessibility loss, new selection semantics or scanning logic.
+- [x] Verify existing single-center action doesn't toggle checkbox and table/dropdown sync; actual Chrome query/click/focus/viewport assertions.
+- [x] Controller review, verify all suites/vet/scopedfmt/builds; commit/push feat: improve datacenter search and selection controls.
 
 ## Task 3: Explicit Encrypted Huawei Save and Final Delivery
 

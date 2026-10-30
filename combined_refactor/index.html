@@ -400,9 +400,24 @@
             box-shadow: var(--shadow);
         }
 
+        #webDCSelector [hidden] { display: none; }
+        .web-dc-search label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
+        .web-dc-search input { width: 100%; margin-bottom: 8px; }
         .web-dc-options { border: 0; margin: 0; padding: 0; }
-        .web-dc-options label { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
-        .web-dc-options input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; padding: 0; }
+        .web-dc-options label { display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 6px; cursor: pointer; }
+        .web-dc-options span { overflow-wrap: anywhere; }
+        .web-dc-check { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border-radius: 6px; cursor: pointer; }
+        .web-dc-options input[type="checkbox"], .web-dc-check input[type="checkbox"] {
+            flex: none; width: 24px; height: 24px; min-height: 0; margin: 0; padding: 0; accent-color: var(--primary-color);
+        }
+        .web-dc-options input:focus-visible, .web-dc-check input:focus-visible, #webDCSearch:focus-visible {
+            outline: 2px solid var(--primary-color); outline-offset: 3px;
+        }
+        .web-dc-options label:hover, .web-dc-check:hover { background: color-mix(in srgb, var(--card-bg), var(--primary-color) 10%); }
+        .web-dc-options label:has(input:checked), #dcTable tr.web-dc-selected { background: color-mix(in srgb, var(--card-bg), var(--primary-color) 8%); }
+        #dcTable tr.web-dc-selected:hover { background: color-mix(in srgb, var(--card-bg), var(--primary-color) 12%); }
+        .web-dc-options label:has(input:disabled), .web-dc-check:has(input:disabled) { opacity: 0.55; cursor: not-allowed; }
+        .web-dc-options input:disabled, .web-dc-check input:disabled, #webDCSearch:disabled { cursor: not-allowed; }
 
         .option-item input,
         .option-item select {
@@ -1809,7 +1824,12 @@
                     <details id="webDCSelector" class="web-dc-picker" onkeydown="if (event.key === 'Escape') { this.open = false; this.querySelector('summary').focus(); }">
                         <summary id="webDCSummary" aria-controls="webDCChoices">扫描后选择数据中心</summary>
                         <div class="web-dc-dropdown">
+                            <div class="web-dc-search">
+                                <label for="webDCSearch">搜索数据中心</label>
+                                <input id="webDCSearch" type="search" placeholder="代码、城市或国家" aria-controls="webDCChoices" oninput="filterWebDatacenters()" disabled>
+                            </div>
                             <p id="webDCEmpty">先完成一次扫描，才能从发现的数据中心中选择；无需开启自动测速。</p>
+                            <p id="webDCNoMatches" role="status" hidden>没有匹配的数据中心，请修改或清空搜索。</p>
                             <fieldset id="webDCChoices" class="web-dc-options" hidden></fieldset>
                         </div>
                     </details>
@@ -3659,6 +3679,7 @@
                 sp.className = 'btn-spinner';
             }
             btn.disabled = false;
+            updateWebBatchSelection();
             updateBackgroundButton();
         }
 
@@ -3727,6 +3748,7 @@
             if (!snapshot) return;
             backgroundTaskActive = !!snapshot.running;
             isTaskRunning = !!snapshot.running;
+            updateWebBatchSelection();
             isStoppingTask = false;
             renderBackgroundStatusCard(snapshot);
             if (!snapshot.running) {
@@ -4657,7 +4679,7 @@
                 const lcFactor = getLatencyColorFactor();
                 const latencyColor = getLatencyColor(dc.MinLatency, lcFactor);
                 const btn = isTesting ? `<button class="action-btn" disabled>测试中...</button>` : `<button class="action-btn${isTested ? ' selected' : ''}" onclick="selectDC('${dc.DataCenter}')" ${isTaskRunning ? 'disabled' : ''}>${isTested ? '重新测试' : '选择测试'}</button>`;
-                const checkbox = `<label style="display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;"><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="批量选择 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)" ${selectedWebDCs.has(dc.DataCenter) ? 'checked' : ''} ${isTaskRunning ? 'disabled' : ''}></label>`;
+                const checkbox = `<label class="web-dc-check"><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="批量选择 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)" ${selectedWebDCs.has(dc.DataCenter) ? 'checked' : ''} ${isTaskRunning ? 'disabled' : ''}></label>`;
                 const tr = `<tr><td>${checkbox}</td><td><strong>${dc.DataCenter}</strong></td><td>${escapeHTML(dc.DCCountry || '-')}</td><td>${escapeHTML(dc.City)}</td><td>${dc.IPCount}</td><td style="color:${latencyColor}; font-weight:600;">${dc.MinLatency} ms</td><td>${btn}</td></tr>`;
                 tbody.insertAdjacentHTML('beforeend', tr);
             });
@@ -4672,25 +4694,41 @@
             updateWebBatchSelection();
         }
 
+        function filterWebDatacenters() {
+            const query = document.getElementById('webDCSearch').value.trim().toLowerCase();
+            let matches = 0;
+            document.getElementById('webDCChoices').querySelectorAll('label').forEach(label => {
+                label.hidden = !label.textContent.toLowerCase().includes(query);
+                if (!label.hidden) matches++;
+            });
+            document.getElementById('webDCNoMatches').hidden = dcList.length === 0 || matches > 0;
+        }
+
         function updateWebBatchSelection() {
             const selected = [...selectedWebDCs].filter(dc => dcList.some(item => item.DataCenter === dc)).sort();
             document.getElementById('webBatchSelection').textContent = `已选 ${selected.length} 个数据中心${selected.length ? ': ' + selected.join(', ') : ''}`;
             document.getElementById('btnWebBatch').disabled = isTaskRunning || currentMode !== 'official' || selected.length === 0;
             document.getElementById('webDCSummary').textContent = selected.length ? selected.join(', ') : (dcList.length ? '选择数据中心（可多选）' : '扫描后选择数据中心');
             document.getElementById('webDCEmpty').hidden = dcList.length > 0;
+            const search = document.getElementById('webDCSearch');
+            search.disabled = isTaskRunning || dcList.length === 0;
+            if (!dcList.length) search.value = '';
             const choices = document.getElementById('webDCChoices');
             choices.hidden = dcList.length === 0;
             choices.disabled = isTaskRunning;
             const discovered = JSON.stringify(dcList);
             // Preserve focused checkbox nodes when only selection state changes.
             if (choices.dataset.datacenters !== discovered) {
-                choices.innerHTML = dcList.length ? '<legend>选择参与批量测试的数据中心</legend>' + dcList.map(dc => `<label><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="多选数据中心 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)"><span>${dc.DataCenter} ${escapeHTML(dc.City || '')}</span></label>`).join('') : '';
+                choices.innerHTML = dcList.length ? '<legend>选择参与批量测试的数据中心</legend>' + dcList.map(dc => `<label><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="多选数据中心 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)"><span>${dc.DataCenter} ${escapeHTML(dc.City || '')} ${escapeHTML(dc.DCCountry || '')}</span></label>`).join('') : '';
                 choices.dataset.datacenters = discovered;
             }
             document.querySelectorAll('#webDCChoices input[data-dc], #dcTable input[data-dc]').forEach(input => {
                 input.checked = selectedWebDCs.has(input.dataset.dc);
                 input.disabled = isTaskRunning;
+                const row = input.closest('tr');
+                if (row) row.classList.toggle('web-dc-selected', input.checked);
             });
+            filterWebDatacenters();
         }
 
         function getWebBatchRequest() {
