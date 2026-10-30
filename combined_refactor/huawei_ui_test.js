@@ -1,0 +1,32 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const html = fs.readFileSync(`${__dirname}/index.html`, 'utf8');
+for (const m of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new vm.Script(m[1]);
+function extract(name) {
+  const start = html.indexOf(`        function ${name}(`);
+  assert.notEqual(start, -1, `missing ${name}`);
+  const end = html.indexOf('\n        function ', start + 1);
+  return html.slice(start, end === -1 ? html.indexOf('</script>', start) : end);
+}
+const elements = Object.fromEntries(['huaweiAK','huaweiSK','huaweiRegion','huaweiProjectID','huaweiPersist','huaweiConfigStatus','huaweiDNSStatus','huaweiZone','huaweiRecord','huaweiTarget','huaweiPreview','huaweiConfirm','huaweiAuto','githubAutoSelected','githubRepo','githubToken','githubBranch','githubPath','githubMessage','resultFormat'].map(id=>[id,{value:'',checked:false,disabled:false,textContent:'',innerHTML:''}]));
+const sent = [];
+const notices = [];
+const ctx=vm.createContext({document:{getElementById:id=>elements[id]},wsSend:p=>sent.push(p),showNoticeCard:p=>notices.push(p),completedWebBatch:{id:7,results:[{IP:'192.0.2.2'}]},huaweiPreviewToken:'',huaweiPreviewBatchID:0,confirm:()=>true,escapeHTML:s=>String(s).replaceAll('<','&lt;')});
+for(const name of ['saveHuaweiConfig','previewHuaweiDNS','confirmHuaweiDNS','handleHuaweiMessage','selectedGitHubSettings','saveWebPublishOptions'])vm.runInContext(extract(name),ctx);
+elements.huaweiAK.value='AK_SECRET';elements.huaweiSK.value='SK_SECRET';elements.huaweiRegion.value='cn-north-4';elements.huaweiProjectID.value='0123456789abcdef0123456789abcdef';elements.huaweiPersist.checked=true;
+vm.runInContext('saveHuaweiConfig()',ctx);
+assert.equal(sent.at(-1).data.sk,'SK_SECRET');
+assert.equal(elements.huaweiSK.value,'');assert.equal(elements.huaweiAK.value,'');
+vm.runInContext(`handleHuaweiMessage({type:'huawei_response',data:{action:'huawei_config_get',data:{maskedAK:'configured (ending 6789)',hasSecret:true,region:'cn-north-4',projectId:'0123456789abcdef0123456789abcdef',persisted:true,regions:['cn-north-4']}}})`,ctx);
+assert.equal(elements.huaweiAK.value,'');assert.equal(elements.huaweiSK.value,'');assert.match(elements.huaweiConfigStatus.textContent,/6789/);
+vm.runInContext('previewHuaweiDNS()',ctx);assert.equal(sent.at(-1).data.batchId,7);assert.equal(sent.at(-1).data.results,undefined);
+vm.runInContext(`handleHuaweiMessage({type:'huawei_response',data:{action:'huawei_preview',data:{token:'preview-token',batchId:7,target:{name:'edge.example.com.',type:'A',line:'default_view',ttl:300},old:['192.0.2.1'],new:['192.0.2.2'],changed:true}}})`,ctx);
+assert.equal(elements.huaweiConfirm.disabled,false);
+vm.runInContext('confirmHuaweiDNS()',ctx);assert.equal(sent.at(-1).data.token,'preview-token');assert.equal(sent.at(-1).data.confirmed,true);assert.equal(elements.huaweiConfirm.disabled,true);
+const before=sent.length;ctx.completedWebBatch=null;vm.runInContext('previewHuaweiDNS()',ctx);assert.equal(sent.length,before);
+elements.githubRepo.value='owner/repo';elements.githubToken.value='token';elements.resultFormat.value='txt';elements.huaweiAuto.checked=true;elements.githubAutoSelected.checked=true;
+vm.runInContext('saveWebPublishOptions()',ctx);assert.equal(sent.at(-1).type,'web_publish_options');assert.equal(sent.at(-1).data.githubConfig.content,undefined);
+vm.runInContext(`handleHuaweiMessage({type:'web_publish_status',data:{destination:'dns',batchId:7,status:'failed',message:'DNS failed'}})`,ctx);
+assert.match(elements.huaweiDNSStatus.textContent,/DNS failed/);
+console.log('Huawei configuration/preview/publishing UI assertions passed (offline)');

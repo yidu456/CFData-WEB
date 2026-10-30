@@ -39,6 +39,8 @@ ip.csv
 ip.txt
 *_failures.csv
 combined_refactor/cfdata-config.json
+huawei-dns.private
+.huawei-private-*
 combined_refactor/ips-v4.txt
 combined_refactor/ips-v6.txt
 combined_refactor/locations.json

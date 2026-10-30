@@ -111,6 +111,7 @@ func (s *appSession) startTaskNamed(label string, mode string, params map[string
 				s.sendWSMessage("task_stopped", nil)
 				return
 			}
+			s.autoPublishCompletedWebBatch()
 			s.sendWSMessage("task_complete", nil)
 		}()
 		run(ctx, s)
@@ -160,9 +161,10 @@ func (s *appSession) shouldCancelOnDisconnect() bool {
 
 func (s *appSession) cancelTask(withLog bool) {
 	s.taskMutex.Lock()
+	s.invalidateWebPublicationLocked()
+	s.webBatch = nil
 	cancel := s.taskCancel
 	if cancel != nil {
-		s.webBatch = nil
 		cancel()
 	}
 	s.taskMutex.Unlock()
@@ -198,6 +200,7 @@ func (s *appSession) beginTask(cancel context.CancelFunc, label string, mode str
 		return false
 	}
 	s.isTaskRunning = true
+	s.invalidateWebPublicationLocked()
 	s.webBatch = nil
 	s.taskCancel = cancel
 	s.backgroundTask = false

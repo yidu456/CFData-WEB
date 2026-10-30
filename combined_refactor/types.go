@@ -77,17 +77,19 @@ type ScanResult struct {
 }
 
 type TestResult struct {
-	IP         string
-	Port       int
-	DataCenter string
-	DCCountry  string
-	Region     string
-	City       string
-	MinLatency time.Duration
-	MaxLatency time.Duration
-	AvgLatency time.Duration
-	LossRate   float64
-	Speed      string
+	// Collection provenance survives retests and background replay after batch authority expires.
+	WebBatchDerived bool `json:"WebBatchDerived,omitempty"`
+	IP              string
+	Port            int
+	DataCenter      string
+	DCCountry       string
+	Region          string
+	City            string
+	MinLatency      time.Duration
+	MaxLatency      time.Duration
+	AvgLatency      time.Duration
+	LossRate        float64
+	Speed           string
 	// MeasuredSpeedMB retains the numeric result used by selection; Speed remains the display value.
 	MeasuredSpeedMB float64 `json:"-"`
 	SpeedMeasured   bool    `json:"-"`
@@ -243,6 +245,15 @@ type appSession struct {
 	backgroundSnapshot   backgroundTaskSnapshot
 	webBatch             *webBatchSnapshot
 	webBatchSequence     uint64
+	dnsMutex             sync.Mutex
+	dnsZones             []huaweiZone
+	dnsRecords           []huaweiRecord
+	dnsTarget            *huaweiRecord
+	dnsPreview           *huaweiPreview
+	webPublishOptions    webPublishOptions
+	webPublishAttempts   map[string]bool
+	webPublishContext    context.Context
+	webPublishCancel     context.CancelFunc
 	wsClosed             bool
 	scanMutex            sync.Mutex
 	scanResults          []ScanResult

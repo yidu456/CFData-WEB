@@ -96,12 +96,13 @@ type edgetunnelUploadRequest struct {
 }
 
 type githubUploadRequest struct {
-	Token   string `json:"token"`
-	Owner   string `json:"owner"`
-	Repo    string `json:"repo"`
-	Branch  string `json:"branch"`
-	Path    string `json:"path"`
-	Message string `json:"message"`
-	Content string `json:"content"`
-	Silent  bool   `json:"silent"`
+	beforeMutation func() error
+	Token          string `json:"token"`
+	Owner          string `json:"owner"`
+	Repo           string `json:"repo"`
+	Branch         string `json:"branch"`
+	Path           string `json:"path"`
+	Message        string `json:"message"`
+	Content        string `json:"content"`
+	Silent         bool   `json:"silent"`
 }

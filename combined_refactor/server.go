@@ -31,7 +31,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := &appSession{ws: ws}
+	session.refreshWebPublicationAfterReconnect()
 	defer func() {
+		session.cancelWebPublication()
 		if session.shouldCancelOnDisconnect() {
 			session.cancelTaskSilently()
 		}
@@ -380,6 +382,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				if session != backgroundSession {
 					backgroundSession.attachWebSocket(ws)
 					session = backgroundSession
+					session.refreshWebPublicationAfterReconnect()
 				}
 				backgroundSession.stopTask()
 				return
@@ -402,6 +405,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			backgroundSession.attachWebSocket(ws)
 			session = backgroundSession
+			session.refreshWebPublicationAfterReconnect()
 			snapshot := backgroundSession.backgroundSummary()
 			backgroundSession.sendWSMessage("background_task_following", snapshot)
 
@@ -415,15 +419,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				if backgroundSession.replayCompletedWebBatch() {
 					return
 				}
-				backgroundSession.testMutex.Lock()
-				results := append([]TestResult(nil), backgroundSession.testResults...)
-				backgroundSession.testMutex.Unlock()
-				if len(results) > 0 {
-					for _, res := range results {
-						backgroundSession.sendWSMessage("test_result", res)
-					}
-					backgroundSession.sendWSMessage("test_complete", results)
-				}
+				backgroundSession.replayOfficialTestResults()
 			}
 
 			if !snapshot.Running && snapshot.Phase == "完成" {
@@ -568,6 +564,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			session.sendWSMessage("error", "请求格式错误")
 			continue
 		}
+		// Authority belongs to this immutable handshake, never the shared background session.
+		if handleHuaweiWebAction(r.Context(), session, webHuaweiDNS, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }) {
+			continue
+		}
 
 		handler, ok := handlers[request.Type]
 		if !ok {
@@ -579,6 +579,19 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 const githubUploadMaxAttempts = 3
+
+func (s *appSession) replayOfficialTestResults() {
+	s.testMutex.Lock()
+	results := append([]TestResult(nil), s.testResults...)
+	s.testMutex.Unlock()
+	if len(results) == 0 {
+		return
+	}
+	for _, result := range results {
+		s.sendWSMessage("test_result", result)
+	}
+	s.sendWSMessage("test_complete", results)
+}
 
 func uploadGitHubContentWithRetry(ctx context.Context, params githubUploadRequest, onAttempt func(attempt, total int, err error)) (string, error) {
 	var lastErr error
@@ -645,6 +658,11 @@ func uploadGitHubContent(ctx context.Context, params githubUploadRequest) (strin
 		return "", err
 	}
 	setGitHubHeaders(req, params.Token)
+	if params.beforeMutation != nil {
+		if err := params.beforeMutation(); err != nil {
+			return "", err
+		}
+	}
 	resp, err := managementHTTPClient(0).Do(req)
 	if err != nil {
 		return "", err

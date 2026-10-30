@@ -311,6 +311,9 @@ func measureHTTPTTFB(ctx context.Context, ip string, port int, effectiveDelay in
 }
 
 func runOfficialTask(ctx context.Context, session *appSession, ipType int, scanMaxThreads int, port int, delay int, scanMode string) {
+	session.testMutex.Lock()
+	session.testResults = nil
+	session.testMutex.Unlock()
 	filename := "ips-v4.txt"
 	apiURL := "https://www.baipiao.eu.org/cloudflare/ips-v4"
 	if ipType == 6 {
@@ -451,6 +454,9 @@ func runOfficialTask(ctx context.Context, session *appSession, ipType int, scanM
 }
 
 func runDetailedTest(ctx context.Context, session *appSession, selectedDC string, port int, delay int, scanMode string) {
+	session.testMutex.Lock()
+	session.testResults = nil
+	session.testMutex.Unlock()
 	var testIPList []string
 	scanByIP := make(map[string]ScanResult)
 	session.scanMutex.Lock()

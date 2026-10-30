@@ -187,6 +187,7 @@ func runWebBatch(ctx context.Context, s *appSession, r startWebBatchRequest, dep
 			return
 		}
 		res.IP, res.Port = scan.IP, r.Port
+		res.WebBatchDerived = true
 		res.DataCenter, res.DCCountry, res.Region, res.City = scan.DataCenter, scan.DCCountry, scan.Region, scan.City
 		res.Speed, res.MeasuredSpeedMB, res.SpeedMeasured = "", 0, false
 		resultMutex.Lock()

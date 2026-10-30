@@ -208,6 +208,7 @@ func main() {
 
 	if !cliCfg.enabled {
 		cfgPath := defaultCLIConfigPath()
+		initHuaweiPrivateConfig()
 		if _, created, err := loadOrCreateCLIConfig(cfgPath); err != nil && !errors.Is(err, errCLIConfigCreated) {
 			fmt.Printf("[config] 加载配置文件失败: %v\n", err)
 		} else if created {

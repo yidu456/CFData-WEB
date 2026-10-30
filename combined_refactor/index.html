@@ -1680,6 +1680,8 @@
             </div>
             <div class="settings-title">本地缓存</div>
             <button class="danger-btn" onclick="resetAllConfig()">恢复全部默认配置</button>
+            <div class="settings-title" style="margin-top:12px;">多中心结果发布</div>
+            <button class="menu-btn" onclick="openHuaweiPanel()">华为云 DNS 配置与预览</button>
 
             <div class="settings-title" style="margin-top:12px;">🌐 管理面代理</div>
             <div class="upload-status" id="proxyStatusText">未启用（可用系统环境变量代理）</div>
@@ -2243,6 +2245,10 @@
                         <label>上传状态</label>
                         <div class="upload-status" id="githubUploadStatus">等待上传</div>
                     </div>
+                    <div class="modal-field full github-field">
+                        <label class="inline-check"><input id="githubAutoSelected" type="checkbox" onchange="saveWebPublishOptions()"> 下次多中心测试完成后自动上传最终排名结果</label>
+                        <p style="font-size:12px;color:var(--text-secondary);">复用此处账户配置。多中心发布使用服务端全部最终结果，TXT 为 IP:PORT#DC，CSV 含 IP/端口/中心/速度/延迟；不使用行筛选或自定义字段。DNS 与 GitHub 单独尝试、单独显示状态。</p>
+                    </div>
                     <div class="modal-field full">
                         <label>上传失败提示</label>
                         <div class="upload-status" id="uploadProxyHint">上传失败？可在右上角设置菜单配置代理后重试；支持程序配置（socks5://、http:// 等）与系统环境变量代理，扫描测速不受影响。</div>
@@ -2288,6 +2294,40 @@
                 <button class="action-btn export-btn" onclick="confirmEdgetunnelUpload('append')">上传 edgetunnel-追加</button>
                 <button class="action-btn export-btn" onclick="confirmEdgetunnelUpload('overwrite')">上传 edgetunnel-覆盖</button>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-mask" id="huaweiModalMask" role="dialog" aria-modal="true" aria-labelledby="huaweiPanelTitle" onkeydown="handleHuaweiDialogKey(event)">
+        <div class="result-modal">
+            <div class="modal-head">
+                <h3 id="huaweiPanelTitle">华为云 DNS · 多中心结果发布</h3>
+                <button class="modal-close" onclick="closeHuaweiPanel()" aria-label="关闭华为云 DNS 面板">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-grid">
+                    <div class="modal-field full">
+                        <p style="color:var(--text-secondary);font-size:13px;">仅同源本机访问或已登录的远程 Web 可用。连接测试只读取公网域名；只修改明确选定的现有 A/AAAA 记录，不创建、删除或清空记录。AK/SK 不进入浏览器保存配置、导出文件或日志。</p>
+                        <div class="upload-status" id="huaweiConfigStatus" role="status" aria-live="polite">尚未加载服务配置</div>
+                    </div>
+                    <div class="modal-field"><label for="huaweiAK">Access Key (AK)</label><input id="huaweiAK" type="password" autocomplete="off" placeholder="留空保留后端已有 AK"></div>
+                    <div class="modal-field"><label for="huaweiSK">Secret Key (SK)</label><input id="huaweiSK" type="password" autocomplete="new-password" placeholder="留空保留后端已有 SK"></div>
+                    <div class="modal-field"><label for="huaweiRegion">DNS 服务区域 / 固定 HTTPS 端点</label><select id="huaweiRegion"><option value="cn-north-4">cn-north-4</option></select></div>
+                    <div class="modal-field"><label for="huaweiProjectID">所选区域的 Project ID（必填）</label><input id="huaweiProjectID" type="text" autocomplete="off" maxlength="32" placeholder="32 位十六进制项目 ID"></div>
+                    <div class="modal-field full">
+                        <p style="font-size:12px;color:var(--text-secondary);">使用 DNS 官方 BasicCredentials。项目 ID 可从华为云「我的凭证 / API 凭证」获取，需与区域对应；不自动访问 IAM，不接受自定义签名地址。</p>
+                        <label class="inline-check"><input id="huaweiPersist" type="checkbox"> 本次应用时明确保存到后端用户私有目录（Windows 用户 DPAPI；Linux 0700/0600）</label>
+                        <p style="font-size:12px;color:var(--text-secondary);">默认仅内存；不勾选不会覆盖已保存文件，重启会恢复上次明确保存的配置。</p>
+                    </div>
+                    <div class="modal-field full"><div class="modal-actions"><button class="action-btn" onclick="saveHuaweiConfig()">应用服务配置</button><button class="action-btn" onclick="loadHuaweiConfig()">重读后端配置</button><button class="action-btn" onclick="discoverHuaweiZones(true)">测试连接（只读）</button><button class="action-btn" onclick="discoverHuaweiZones(false)">发现公网域名</button></div></div>
+                    <div class="modal-field"><label for="huaweiZone">公网域名</label><select id="huaweiZone" onchange="discoverHuaweiRecords()"><option value="">先测试连接或发现域名</option></select></div>
+                    <div class="modal-field"><label for="huaweiRecord">现有 A / AAAA 记录集</label><select id="huaweiRecord" onchange="selectHuaweiRecord()"><option value="">先选择域名</option></select></div>
+                    <div class="modal-field full"><label>目标身份、线路和 TTL</label><pre class="result-preview" id="huaweiTarget">尚未选择记录集</pre></div>
+                    <div class="modal-field full"><label>服务端最终排名结果 · 旧 / 新 IP 预览</label><pre class="result-preview" id="huaweiPreview">完成多中心测试后预览；无对应地址族时保留原记录</pre></div>
+                    <div class="modal-field full"><label class="inline-check"><input id="huaweiAuto" type="checkbox" onchange="saveWebPublishOptions()"> 下次多中心测试完成后自动更新此记录集</label><p style="font-size:12px;color:var(--text-secondary);">每个批次最多自动尝试一次；失败、取消、未完成、空结果保持旧记录。重连不会重放写入；如云端超时请先重新读取记录，再决定是否重试。</p></div>
+                    <div class="modal-field full"><div class="upload-status" id="huaweiDNSStatus" role="status" aria-live="polite">等待操作</div></div>
+                </div>
+            </div>
+            <div class="modal-actions footer"><button class="action-btn" onclick="previewHuaweiDNS()">预览完成批次</button><button class="action-btn export-btn" id="huaweiConfirm" onclick="confirmHuaweiDNS()" disabled>确认更新 DNS</button></div>
         </div>
     </div>
 
@@ -2474,6 +2514,9 @@
         let selectedWebDCs = new Set();
         let webBatchRunning = false;
         let completedWebBatch = null;
+        let webBatchDerivedResults = false;
+        let huaweiPreviewToken = '';
+        let huaweiPreviewBatchID = 0;
         let testedDCs = new Set();
         let currentTestingDC = '';
         let scanResultsCount = 0;
@@ -3187,6 +3230,8 @@
                 }
             };
             ws.onclose = () => {
+                completedWebBatch = null;
+                clearHuaweiPreview();
                 clearStopWatchdog();
                 resetCurrentSpeedButton();
                 if (backgroundTaskActive) {
@@ -4612,9 +4657,11 @@
             if (requireProxyWarning(startWebBatch)) return;
             let request;
             try { request = getWebBatchRequest(); } catch (err) { showNoticeCard(err.message); return; }
+            if (!saveWebPublishOptions()) return;
             if (!wsSend({ type: 'start_web_batch', data: request })) { showNoticeCard('连接未就绪，请等待重连后再试'); return; }
             webBatchRunning = true;
             completedWebBatch = null;
+            webBatchDerivedResults = true;
             officialAutoSpeedPending = false;
             officialAutoStage = '';
             officialBatchSpeedRunning = false;
@@ -4644,8 +4691,10 @@
             switch (msg.type) {
                 case 'web_batch_invalidated':
                     completedWebBatch = null;
+                    clearHuaweiPreview();
                     break;
                 case 'web_batch_started':
+                    webBatchDerivedResults = true;
                     webBatchRunning = true;
                     status.textContent = `已选 ${p.policy.Datacenters.join(', ')}；候选 ${p.candidateCount}；未发现: ${(p.missingDatacenters || []).join(', ') || '无'}`;
                     break;
@@ -4655,6 +4704,7 @@
                     if (p.phase === 'speed') status.textContent = `测速 ${p.current || 0}/${p.total || 0}，达标 ${p.qualified || 0}；全部测完再取前 N`;
                     break;
                 case 'web_batch_result':
+                    webBatchDerivedResults = true;
                     if (isStoppingTask) break;
                     {
                         const row = { ...p.result, BatchQualified: p.qualified };
@@ -4664,6 +4714,7 @@
                     }
                     break;
                 case 'web_batch_complete':
+                    webBatchDerivedResults = true;
                     if (isStoppingTask) break;
                     completedWebBatch = p;
                     testData = p.results.map((row, index) => ({ ...row, BatchQualified: true, BatchRank: index + 1 }));
@@ -4694,6 +4745,7 @@
             autoUploadKeys = new Set();
             updateBadge('testCount', 0);
             testData = [];
+            webBatchDerivedResults = false;
             officialSpeedEnabledForResults = false;
             officialContinueSpeedUnlocked = false;
             setOfficialTestQualifiedFilter('all');
@@ -4736,6 +4788,7 @@
         }
 
         function addTestResult(res, render = true) {
+            if (res.WebBatchDerived) webBatchDerivedResults = true;
             testResultsCount++;
             testData.push(res);
             updateBadge('testCount', getFilteredOfficialTestData().length);
@@ -5104,6 +5157,7 @@
 
             scanData = [];
             testData = [];
+            webBatchDerivedResults = false;
             dcList = [];
             selectedWebDCs.clear();
             updateWebBatchSelection();
@@ -6302,6 +6356,168 @@
             }
         }
 
+        function openHuaweiPanel() {
+            document.getElementById('settingsMenu').classList.add('hidden');
+            document.getElementById('huaweiModalMask').classList.add('active');
+            loadHuaweiConfig();
+            document.getElementById('huaweiAK').focus();
+        }
+
+        function closeHuaweiPanel() {
+            document.getElementById('huaweiModalMask').classList.remove('active');
+            document.getElementById('huaweiAK').value = '';
+            document.getElementById('huaweiSK').value = '';
+            document.getElementById('settingsToggle').focus();
+        }
+
+        function handleHuaweiDialogKey(event) {
+            if (event.key === 'Escape') { event.preventDefault(); closeHuaweiPanel(); return; }
+            if (event.key !== 'Tab') return;
+            const controls = [...document.getElementById('huaweiModalMask').querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')];
+            const first = controls[0], last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        }
+
+        function clearHuaweiPreview() {
+            huaweiPreviewToken = '';
+            huaweiPreviewBatchID = 0;
+            document.getElementById('huaweiConfirm').disabled = true;
+            document.getElementById('huaweiPreview').textContent = '需要完成同一会话的多中心测试，再生成新的服务端预览';
+        }
+
+        function loadHuaweiConfig() {
+            wsSend({ type: 'huawei_config_get', data: {} });
+        }
+
+        function saveHuaweiConfig() {
+            const data = {
+                ak: document.getElementById('huaweiAK').value.trim(),
+                sk: document.getElementById('huaweiSK').value.trim(),
+                region: document.getElementById('huaweiRegion').value,
+                projectId: document.getElementById('huaweiProjectID').value.trim(),
+                persist: document.getElementById('huaweiPersist').checked,
+            };
+            wsSend({ type: 'huawei_config_set', data });
+            document.getElementById('huaweiAK').value = '';
+            document.getElementById('huaweiSK').value = '';
+            document.getElementById('huaweiConfirm').disabled = true;
+        }
+
+        function discoverHuaweiZones(testOnly) {
+            clearHuaweiPreview();
+            document.getElementById('huaweiDNSStatus').textContent = '正在只读连接华为云 DNS…';
+            wsSend({ type: testOnly ? 'huawei_test' : 'huawei_zones', data: {} });
+        }
+
+        function discoverHuaweiRecords() {
+            clearHuaweiPreview();
+            document.getElementById('huaweiRecord').innerHTML = '<option value="">正在读取现有记录集…</option>';
+            wsSend({ type: 'huawei_records', data: { zoneId: document.getElementById('huaweiZone').value } });
+        }
+
+        function selectHuaweiRecord() {
+            clearHuaweiPreview();
+            wsSend({ type: 'huawei_select', data: { zoneId: document.getElementById('huaweiZone').value, recordId: document.getElementById('huaweiRecord').value } });
+        }
+
+        function previewHuaweiDNS() {
+            if (!completedWebBatch?.results?.length) return showNoticeCard('先完成多中心测试；失败、取消或空结果不能发布');
+            document.getElementById('huaweiConfirm').disabled = true;
+            wsSend({ type: 'huawei_preview', data: { batchId: completedWebBatch.id } });
+        }
+
+        function confirmHuaweiDNS() {
+            if (!completedWebBatch || !huaweiPreviewToken || completedWebBatch.id !== huaweiPreviewBatchID) return showNoticeCard('预览已失效，请重新预览');
+            if (!confirm('确认仅更新预览中的现有 DNS 记录值？TTL、线路、权重等保持不变。')) return;
+            wsSend({ type: 'huawei_update', data: { batchId: huaweiPreviewBatchID, token: huaweiPreviewToken, confirmed: true } });
+            huaweiPreviewToken = '';
+            document.getElementById('huaweiConfirm').disabled = true;
+        }
+
+        function selectedGitHubSettings() {
+            const repo = document.getElementById('githubRepo').value.trim().split('/');
+            const token = document.getElementById('githubToken').value.trim();
+            if (repo.length !== 2 || !repo[0] || !repo[1] || !token) {
+                showNoticeCard('先在结果操作的 GitHub 面板选择账户并填写 Token 和 owner/repo');
+                return null;
+            }
+            const format = document.getElementById('resultFormat').value || 'txt';
+            return { format, githubConfig: { token, owner: repo[0], repo: repo[1],
+                branch: document.getElementById('githubBranch').value.trim() || 'main',
+                path: document.getElementById('githubPath').value.trim() || `results/ip.${format}`,
+                message: document.getElementById('githubMessage').value.trim() || 'update cfdata selected batch',
+            } };
+        }
+
+        function saveWebPublishOptions() {
+            const dns = document.getElementById('huaweiAuto').checked;
+            const github = document.getElementById('githubAutoSelected').checked;
+            const settings = github ? selectedGitHubSettings() : { format: 'txt', githubConfig: {} };
+            if (!settings) { document.getElementById('githubAutoSelected').checked = false; return false; }
+            const sent = wsSend({ type: 'web_publish_options', data: { dns, github, ...settings } });
+            if (sent === false) { showNoticeCard('连接未就绪，无法设置发布选项'); return false; }
+            return true;
+        }
+
+        function handleHuaweiMessage(msg) {
+            if (msg.type === 'web_publish_status') {
+                const p = msg.data;
+                const id = p.destination === 'dns' ? 'huaweiDNSStatus' : 'githubUploadStatus';
+                const el = document.getElementById(id);
+                el.textContent = `批次 ${p.batchId} · ${p.status}: ${p.message}`;
+                el.className = 'upload-status' + (['failed', 'denied'].includes(p.status) ? ' error' : ' success');
+                return true;
+            }
+            if (msg.type === 'huawei_error') {
+                document.getElementById('huaweiDNSStatus').textContent = msg.data.message || '华为云请求失败';
+                document.getElementById('huaweiDNSStatus').className = 'upload-status error';
+                document.getElementById('huaweiConfirm').disabled = true;
+                if (msg.data.action === 'web_publish_options') {
+                    document.getElementById('huaweiAuto').checked = false;
+                    document.getElementById('githubAutoSelected').checked = false;
+                    showNoticeCard(msg.data.message);
+                }
+                return true;
+            }
+            if (msg.type !== 'huawei_response') return false;
+            const { action, data } = msg.data;
+            const status = document.getElementById('huaweiDNSStatus');
+            status.className = 'upload-status';
+            if (action === 'huawei_config_get' || action === 'huawei_config_set') {
+                document.getElementById('huaweiRegion').innerHTML = data.regions.map(id => `<option value="${escapeHTML(id)}">${escapeHTML(id)} · dns.${escapeHTML(id)}.myhuaweicloud.com</option>`).join('');
+                document.getElementById('huaweiRegion').value = data.region || 'cn-north-4';
+                document.getElementById('huaweiProjectID').value = data.projectId || '';
+                document.getElementById('huaweiConfigStatus').textContent = `${data.maskedAK || '未配置 AK'} · SK ${data.hasSecret ? '已配置' : '未配置'} · ${data.persisted ? '存在明确保存的私有配置' : '当前仅内存'}；AK/SK 留空保留，掩码不回填输入框`;
+                status.textContent = action === 'huawei_config_set' ? '服务配置已应用；下一步测试只读连接' : '后端配置已读取';
+                if (action === 'huawei_config_set') {
+                    document.getElementById('huaweiAuto').checked = false;
+                    document.getElementById('huaweiZone').innerHTML = '<option value="">重新发现公网域名</option>';
+                    document.getElementById('huaweiRecord').innerHTML = '<option value="">重新选择现有记录</option>';
+                    document.getElementById('huaweiTarget').textContent = '服务配置已改变，请重新发现并选择记录集';
+                    clearHuaweiPreview();
+                }
+            } else if (action === 'huawei_test' || action === 'huawei_zones') {
+                document.getElementById('huaweiZone').innerHTML = '<option value="">选择公网域名</option>' + data.map(z => `<option value="${escapeHTML(z.id)}">${escapeHTML(z.name)}</option>`).join('');
+                status.textContent = `只读连接成功，发现 ${data.length} 个公网域名；未写入 DNS`;
+            } else if (action === 'huawei_records') {
+                document.getElementById('huaweiRecord').innerHTML = '<option value="">选择现有 A/AAAA 记录</option>' + data.map(r => `<option value="${escapeHTML(r.id)}">${escapeHTML(r.name)} · ${escapeHTML(r.type)} · ${escapeHTML(r.line)}</option>`).join('');
+                status.textContent = `发现 ${data.length} 个可选现有 A/AAAA 记录集`;
+            } else if (action === 'huawei_select') {
+                document.getElementById('huaweiTarget').textContent = `${data.name} · ${data.type}\nZone ID: ${data.zoneId}\nRecord ID: ${data.id}\nLine: ${data.line} · TTL: ${data.ttl}s\n当前: ${data.records.join(', ')}`;
+                status.textContent = '目标已明确选择；更新前请先预览';
+            } else if (action === 'huawei_preview') {
+                huaweiPreviewToken = data.token;
+                huaweiPreviewBatchID = data.batchId;
+                document.getElementById('huaweiPreview').textContent = `批次 ${data.batchId} · ${data.target.name} · ${data.target.type} · ${data.target.line} · TTL ${data.target.ttl}s\n旧: ${data.old.join(', ')}\n新: ${data.new.join(', ') || '无匹配地址族，保持旧记录'}\n${data.changed ? '确认后仅修改 records；如目标或云端状态变化会拒绝' : '无变化 / 空结果，跳过更新'}`;
+                document.getElementById('huaweiConfirm').disabled = !data.changed;
+            } else if (action === 'web_publish_options') {
+                document.getElementById('huaweiAuto').checked = data.dns;
+                document.getElementById('githubAutoSelected').checked = data.github;
+            }
+            return true;
+        }
+
         function setGitHubUploadStatus(text, type = '') {
             const el = document.getElementById('githubUploadStatus');
             if (!el) return;
@@ -6390,6 +6606,15 @@
         async function uploadSelectedResultsToGitHub() {
             const format = document.getElementById('resultFormat').value;
             const quickFile = await readQuickUploadFile();
+            if (!quickFile && currentMode === 'official' && resultModalMode === 'test' && webBatchDerivedResults) {
+                if (!completedWebBatch?.results?.length || webBatchRunning || isTaskRunning || isStoppingTask) {
+                    return showNoticeCard('这些结果来自多中心批次；当前批次未完成或已失效，不能上传。请重新完成多中心测试。');
+                }
+                const settings = selectedGitHubSettings();
+                if (!settings) return;
+                wsSend({ type: 'web_github_publish', data: { batchId: completedWebBatch.id, githubConfig: settings.githubConfig, format: settings.format } });
+                return;
+            }
             let content;
             try {
                 content = quickFile ? quickFile.content : buildSelectedResultContent(format);
@@ -6419,6 +6644,7 @@
         }
 
         async function autoUploadOfficialResults() {
+            if (webBatchDerivedResults) return;
             const value = document.getElementById('officialAutoUploadAccount')?.value || '';
             await autoUploadResults(value, 'test', '官方自动上传已提交');
         }
@@ -6479,6 +6705,7 @@
         }
 
         function handleMessage(msg) {
+            if (handleHuaweiMessage(msg)) return;
             switch (msg.type) {
                 case 'web_batch_invalidated':
                 case 'web_batch_started':
@@ -6566,6 +6793,7 @@
                     }
                     if (currentMode === 'official') {
                         testData = msg.data;
+                        webBatchDerivedResults = testData.some(row => row.WebBatchDerived === true);
                         renderAllTestResults();
                         onTestComplete();
                         officialTestCompletePending = true;
@@ -6887,7 +7115,7 @@
                         finishRunningTask('✨ 开始扫描与测试');
                         renderAllTestResults();
                         showDCSelection(dcList);
-                        // Task 3 can publish the same-session completedWebBatch.id here.
+                        // Completion publication is server-owned; replay never triggers writes here.
                         break;
                     }
                     if (officialBatchSpeedRunning) {

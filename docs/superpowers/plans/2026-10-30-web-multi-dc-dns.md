@@ -51,13 +51,13 @@
 
 **Consumes:** Task 2 completed results accessor and policy snapshot, existing Web authentication and GitHub upload functions.
 
-- [ ] Inspect official SDK DNS authentication, region/endpoint and record identity before coding. Add only the official dependency required for DNS; do not hand-roll request signing.
-- [ ] Write failing mocked tests for credential preservation/redaction, private save/reload, same-origin/local-or-authenticated access, public zones/recordset discovery, pure A/AAAA values, identity and TTL preservation, unchanged/empty updates, bounded failures, cancellation/incomplete-state denial and independent GitHub/DNS status.
-- [ ] Implement functional panel/API: AK/SK inputs, service configuration, optional private backend save, connection test (read-only), zone and record dropdowns, target details, planned old/new IP preview, confirmed update button, and opt-in update after a completed Web batch. Blank credentials preserve saved values; responses never return SK/full AK. No browser secret storage/export/logging.
-- [ ] Privileged mutation/discovery endpoints require same-origin validation and loopback/local-host access unless existing Web auth is enabled; reuse auth wrappers and do not weaken them. Private saved credentials are ignored by Git and permission-restricted; saving is explicit.
-- [ ] Update existing selected recordsets only; verify zone/name/type/line, preserve properties, family-filter, skip unchanged, and keep old records for empty/failed/cancelled tasks. No create/delete.
-- [ ] Wire final selected results into existing GitHub UI/manual upload and opt-in completion publication. Attempts/statuses remain independent; no secrets or untrusted arbitrary IPs leak into DNS payloads.
-- [ ] Verify with mocks only, all Go/JS checks/vet/builds. Controller reviews, commits and pushes feat: add complete Web Huawei DNS publishing.
+- [x] Inspect official SDK DNS authentication, region/endpoint and record identity before coding. Add only the official dependency required for DNS; do not hand-roll request signing.
+- [x] Write failing mocked tests for credential preservation/redaction, private save/reload, same-origin/local-or-authenticated access, public zones/recordset discovery, pure A/AAAA values, identity and TTL preservation, unchanged/empty updates, bounded failures, cancellation/incomplete-state denial and independent GitHub/DNS status.
+- [x] Implement functional panel/API: AK/SK inputs, service configuration, optional private backend save, connection test (read-only), zone and record dropdowns, target details, planned old/new IP preview, confirmed update button, and opt-in update after a completed Web batch. Blank credentials preserve saved values; responses never return SK/full AK. No browser secret storage/export/logging.
+- [x] Privileged mutation/discovery endpoints require same-origin validation and loopback/local-host access unless existing Web auth is enabled; reuse auth wrappers and do not weaken them. Private saved credentials are ignored by Git and permission-restricted; saving is explicit.
+- [x] Update existing selected recordsets only; verify zone/name/type/line, preserve properties, family-filter, skip unchanged, and keep old records for empty/failed/cancelled tasks. No create/delete.
+- [x] Wire final selected results into existing GitHub UI/manual upload and opt-in completion publication. Attempts/statuses remain independent; no secrets or untrusted arbitrary IPs leak into DNS payloads.
+- [x] Verify with mocks only, all Go/JS checks/vet/builds. Controller reviews, commits and pushes feat: add complete Web Huawei DNS publishing.
 
 ## Task 4: Web Preview QA and Delivery
 
