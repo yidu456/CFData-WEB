@@ -981,6 +981,24 @@
             display: flex;
         }
 
+        #resultModalMask [hidden],
+        #huaweiModalMask [hidden],
+        #resultModalMask:not([data-view="chooser"]) #resultChooser,
+        #resultModalMask[data-view="chooser"] #resultOutput,
+        #resultModalMask[data-view="chooser"] #resultActions,
+        #resultModalMask[data-view="chooser"] #resultBack,
+        #resultModalMask:not([data-view="github"]) .github-field,
+        #resultModalMask:not([data-view="edgetunnel"]) .edgetunnel-field,
+        #resultModalMask:not([data-view="export"]) .export-field,
+        #resultModalMask[data-view="export"] .upload-field {
+            display: none !important;
+        }
+
+        #resultChooser .action-btn {
+            min-height: 64px;
+            white-space: normal;
+        }
+
         .result-modal {
             width: min(760px, 100%);
             max-height: 90vh;
@@ -2108,14 +2126,101 @@
         </div>
     </div>
 
-    <div class="modal-mask" id="resultModalMask">
+    <div class="modal-mask" id="resultModalMask" data-view="chooser" role="dialog" aria-modal="true" aria-labelledby="resultModalTitle" onkeydown="handleResultDialogKey(event)">
         <div class="result-modal">
             <div class="modal-head">
+                <button class="action-btn" id="resultBack" onclick="showResultActionView('chooser')">返回</button>
                 <h3 id="resultModalTitle">结果操作</h3>
-                <button class="modal-close" onclick="closeResultModal()">×</button>
+                <button class="modal-close" onclick="closeResultModal()" aria-label="关闭结果操作">×</button>
             </div>
             <div class="modal-body">
+                <div class="modal-grid" id="resultChooser">
+                    <button class="action-btn export-btn" id="resultExportChoice" onclick="showResultActionView('export')">导出文件</button>
+                    <button class="action-btn export-btn" id="resultGitHubChoice" onclick="showResultActionView('github')">上传 GitHub</button>
+                    <button class="action-btn export-btn" id="resultEdgetunnelChoice" onclick="showResultActionView('edgetunnel')">上传 edgetunnel</button>
+                    <button class="action-btn export-btn" id="resultHuaweiChoice" onclick="showResultActionView('huawei')">更新华为云 DNS</button>
+                </div>
+                <div id="resultOutput">
                 <div class="modal-grid">
+                    <div class="modal-field github-field">
+                        <label>GitHub 账户</label>
+                        <div class="github-account-row">
+                            <select id="githubAccountSelect" onchange="loadSelectedGitHubAccount()"></select>
+                            <button class="action-btn" onclick="deleteSelectedGitHubAccount()">删除</button>
+                        </div>
+                    </div>
+                    <div class="modal-field github-field">
+                        <label>账户名称</label>
+                        <input id="githubAccountName" type="text" placeholder="例如 main-account">
+                    </div>
+                    <div class="modal-field github-field">
+                        <label>GitHub Token</label>
+                        <input id="githubToken" type="password" autocomplete="off" placeholder="repo 权限 token">
+                    </div>
+                    <div class="modal-field github-field">
+                        <label>仓库 owner/repo</label>
+                        <input id="githubRepo" type="text" placeholder="owner/repo">
+                    </div>
+                    <div class="modal-field github-field">
+                        <label>分支</label>
+                        <input id="githubBranch" type="text" value="main">
+                    </div>
+                    <div class="modal-field github-field">
+                        <label>目标路径</label>
+                        <input id="githubPath" type="text" placeholder="results/ip.csv 或 results/ip.txt">
+                    </div>
+                    <div class="modal-field full github-field">
+                        <label>提交信息</label>
+                        <input id="githubMessage" type="text" value="update cfdata results">
+                    </div>
+                    <div class="modal-field full github-field">
+                        <label class="inline-check"><input id="githubSaveToken" type="checkbox"> 保存 token 到本机浏览器（使用 WebCrypto 加密存储）</label>
+                    </div>
+                    <div class="modal-field full upload-field">
+                        <label>快速上传指定文件（不使用上方结果内容）</label>
+                        <input id="githubQuickFile" type="file" accept=".txt,.csv,text/plain,text/csv">
+                    </div>
+                    <div class="modal-field full github-field">
+                        <label>上传状态</label>
+                        <div class="upload-status" id="githubUploadStatus">等待上传</div>
+                    </div>
+                    <div class="modal-field full github-field">
+                        <label class="inline-check"><input id="githubAutoSelected" type="checkbox" onchange="saveWebPublishOptions()"> 下次多中心测试完成后自动上传最终排名结果</label>
+                        <p style="font-size:12px;color:var(--text-secondary);">复用此处账户配置。多中心发布使用服务端全部最终结果，TXT 为 IP:PORT#DC，CSV 含 IP/端口/中心/速度/延迟；不使用行筛选或自定义字段。DNS 与 GitHub 单独尝试、单独显示状态。</p>
+                    </div>
+                    <div class="modal-field edgetunnel-field">
+                        <label>edgetunnel 账户</label>
+                        <div class="github-account-row">
+                            <select id="edgetunnelAccountSelect" onchange="loadSelectedEdgetunnelAccount()"></select>
+                            <button class="action-btn" onclick="deleteSelectedEdgetunnelAccount()">删除</button>
+                        </div>
+                    </div>
+                    <div class="modal-field edgetunnel-field">
+                        <label>账户名称</label>
+                        <input id="edgetunnelAccountName" type="text" placeholder="例如 main-tunnel">
+                    </div>
+                    <div class="modal-field edgetunnel-field">
+                        <label>edgetunnel 域名</label>
+                        <input id="edgetunnelHost" type="text" placeholder="https://example.com">
+                    </div>
+                    <div class="modal-field edgetunnel-field">
+                        <label>密码</label>
+                        <input id="edgetunnelPassword" type="password" autocomplete="off" placeholder="edgetunnel 密码">
+                    </div>
+                    <div class="modal-field edgetunnel-field">
+                        <label>上传模式</label>
+                        <select id="edgetunnelMode">
+                            <option value="overwrite">覆盖上传</option>
+                            <option value="append">追加上传</option>
+                        </select>
+                    </div>
+                    <div class="modal-field full edgetunnel-field">
+                        <label class="inline-check"><input id="edgetunnelSavePassword" type="checkbox"> 保存密码到本机浏览器（使用 WebCrypto 加密存储）</label>
+                    </div>
+                    <div class="modal-field full edgetunnel-field">
+                        <label>上传状态</label>
+                        <div class="upload-status" id="edgetunnelUploadStatus">等待上传</div>
+                    </div>
                     <div class="modal-field">
                         <label>文件格式</label>
                         <select id="resultFormat" onchange="handleResultFormatChange()">
@@ -2123,7 +2228,7 @@
                             <option value="csv">CSV</option>
                         </select>
                     </div>
-                    <div class="modal-field">
+                    <div class="modal-field export-field">
                         <label>文件名</label>
                         <input id="resultFileName" type="text" value="cfdata-results">
                     </div>
@@ -2203,96 +2308,18 @@
                         <label>输出顺序</label>
                         <div class="order-list" id="resultOrderList"></div>
                     </div>
-                    <div class="modal-field github-field">
-                        <label>GitHub 账户</label>
-                        <div class="github-account-row">
-                            <select id="githubAccountSelect" onchange="loadSelectedGitHubAccount()"></select>
-                            <button class="action-btn" onclick="deleteSelectedGitHubAccount()">删除</button>
-                        </div>
-                    </div>
-                    <div class="modal-field github-field">
-                        <label>账户名称</label>
-                        <input id="githubAccountName" type="text" placeholder="例如 main-account">
-                    </div>
-                    <div class="modal-field github-field">
-                        <label>GitHub Token</label>
-                        <input id="githubToken" type="password" autocomplete="off" placeholder="repo 权限 token">
-                    </div>
-                    <div class="modal-field github-field">
-                        <label>仓库 owner/repo</label>
-                        <input id="githubRepo" type="text" placeholder="owner/repo">
-                    </div>
-                    <div class="modal-field github-field">
-                        <label>分支</label>
-                        <input id="githubBranch" type="text" value="main">
-                    </div>
-                    <div class="modal-field github-field">
-                        <label>目标路径</label>
-                        <input id="githubPath" type="text" placeholder="results/ip.csv 或 results/ip.txt">
-                    </div>
-                    <div class="modal-field full github-field">
-                        <label>提交信息</label>
-                        <input id="githubMessage" type="text" value="update cfdata results">
-                    </div>
-                    <div class="modal-field full github-field">
-                        <label class="inline-check"><input id="githubSaveToken" type="checkbox"> 保存 token 到本机浏览器（使用 WebCrypto 加密存储）</label>
-                    </div>
-                    <div class="modal-field full github-field">
-                        <label>快速上传指定文件（不使用上方结果内容）</label>
-                        <input id="githubQuickFile" type="file" accept=".txt,.csv,text/plain,text/csv">
-                    </div>
-                    <div class="modal-field full github-field">
-                        <label>上传状态</label>
-                        <div class="upload-status" id="githubUploadStatus">等待上传</div>
-                    </div>
-                    <div class="modal-field full github-field">
-                        <label class="inline-check"><input id="githubAutoSelected" type="checkbox" onchange="saveWebPublishOptions()"> 下次多中心测试完成后自动上传最终排名结果</label>
-                        <p style="font-size:12px;color:var(--text-secondary);">复用此处账户配置。多中心发布使用服务端全部最终结果，TXT 为 IP:PORT#DC，CSV 含 IP/端口/中心/速度/延迟；不使用行筛选或自定义字段。DNS 与 GitHub 单独尝试、单独显示状态。</p>
-                    </div>
-                    <div class="modal-field full">
+                    <div class="modal-field full upload-field">
                         <label>上传失败提示</label>
                         <div class="upload-status" id="uploadProxyHint">上传失败？可在右上角设置菜单配置代理后重试；支持程序配置（socks5://、http:// 等）与系统环境变量代理，扫描测速不受影响。</div>
                     </div>
-                    <div class="modal-field edgetunnel-field">
-                        <label>edgetunnel 账户</label>
-                        <div class="github-account-row">
-                            <select id="edgetunnelAccountSelect" onchange="loadSelectedEdgetunnelAccount()"></select>
-                            <button class="action-btn" onclick="deleteSelectedEdgetunnelAccount()">删除</button>
-                        </div>
-                    </div>
-                    <div class="modal-field edgetunnel-field">
-                        <label>账户名称</label>
-                        <input id="edgetunnelAccountName" type="text" placeholder="例如 main-tunnel">
-                    </div>
-                    <div class="modal-field edgetunnel-field">
-                        <label>edgetunnel 域名</label>
-                        <input id="edgetunnelHost" type="text" placeholder="https://example.com">
-                    </div>
-                    <div class="modal-field edgetunnel-field">
-                        <label>密码</label>
-                        <input id="edgetunnelPassword" type="password" autocomplete="off" placeholder="edgetunnel 密码">
-                    </div>
-                    <div class="modal-field edgetunnel-field">
-                        <label>上传模式</label>
-                        <select id="edgetunnelMode">
-                            <option value="overwrite">覆盖上传</option>
-                            <option value="append">追加上传</option>
-                        </select>
-                    </div>
-                    <div class="modal-field full edgetunnel-field">
-                        <label class="inline-check"><input id="edgetunnelSavePassword" type="checkbox"> 保存密码到本机浏览器（使用 WebCrypto 加密存储）</label>
-                    </div>
-                    <div class="modal-field full edgetunnel-field">
-                        <label>上传状态</label>
-                        <div class="upload-status" id="edgetunnelUploadStatus">等待上传</div>
-                    </div>
+                </div>
                 </div>
             </div>
-            <div class="modal-actions footer">
-                <button class="action-btn export-btn" onclick="downloadSelectedResults()">导出文件</button>
-                <button class="action-btn export-btn" onclick="uploadSelectedResultsToGitHub()">上传 GitHub</button>
-                <button class="action-btn export-btn" onclick="confirmEdgetunnelUpload('append')">上传 edgetunnel-追加</button>
-                <button class="action-btn export-btn" onclick="confirmEdgetunnelUpload('overwrite')">上传 edgetunnel-覆盖</button>
+            <div class="modal-actions footer" id="resultActions">
+                <button class="action-btn export-btn export-field" onclick="downloadSelectedResults()">导出文件</button>
+                <button class="action-btn export-btn github-field" onclick="uploadSelectedResultsToGitHub()">上传 GitHub</button>
+                <button class="action-btn export-btn edgetunnel-field" onclick="confirmEdgetunnelUpload('append')">上传 edgetunnel-追加</button>
+                <button class="action-btn export-btn edgetunnel-field" onclick="confirmEdgetunnelUpload('overwrite')">上传 edgetunnel-覆盖</button>
             </div>
         </div>
     </div>
@@ -2300,6 +2327,7 @@
     <div class="modal-mask" id="huaweiModalMask" role="dialog" aria-modal="true" aria-labelledby="huaweiPanelTitle" onkeydown="handleHuaweiDialogKey(event)">
         <div class="result-modal">
             <div class="modal-head">
+                <button class="action-btn" id="huaweiBack" onclick="closeHuaweiPanel()" hidden>返回结果操作</button>
                 <h3 id="huaweiPanelTitle">华为云 DNS · 多中心结果发布</h3>
                 <button class="modal-close" onclick="closeHuaweiPanel()" aria-label="关闭华为云 DNS 面板">×</button>
             </div>
@@ -2487,7 +2515,7 @@
         </div>
     </div>
 
-    <div class="modal-mask" id="noticeCardMask">
+    <div class="modal-mask" id="noticeCardMask" role="dialog" aria-modal="true" aria-labelledby="noticeCardTitle" onkeydown="handleNoticeDialogKey(event)">
         <div class="result-modal notice-modal">
             <div class="modal-head">
                 <h3 id="noticeCardTitle">提示</h3>
@@ -2573,6 +2601,10 @@
         let proxyCountryCheckTimer = null;
         let proxyWarningSinglePass = false;
         let resultModalMode = 'scan';
+        let resultReturnFocus = null;
+        let huaweiFromResult = false;
+        let resultHuaweiLoaded = false;
+        let resultHuaweiLoading = false;
         let copyModalMode = 'scan';
         let sortModalMode = 'official';
         let resultFieldOrder = [];
@@ -2581,6 +2613,7 @@
         let copyCustomFields = [];
         let autoUploadKeys = new Set();
         let noticeConfirmAction = null;
+        let noticeReturnFocus = null;
         const githubAccountStorageKey = 'cfdata-github-accounts';
         const githubSessionTokens = new Map();
         const githubTokenCryptoSalt = 'cfdata-github-token-v1';
@@ -3230,6 +3263,7 @@
                 }
             };
             ws.onclose = () => {
+                resultHuaweiLoading = false;
                 completedWebBatch = null;
                 clearHuaweiPreview();
                 clearStopWatchdog();
@@ -3273,7 +3307,7 @@
             titleEl.textContent = title;
             messageEl.textContent = String(message || '');
             actions.innerHTML = '<button class="action-btn export-btn" onclick="closeNoticeCard()">知道了</button>';
-            mask.classList.add('active');
+            openNoticeOverlay();
         }
 
         function showConfirmCard(message, onConfirm, title = '确认操作') {
@@ -3286,13 +3320,34 @@
             titleEl.textContent = title;
             messageEl.textContent = String(message || '');
             actions.innerHTML = '<button class="action-btn" onclick="closeNoticeCard()">取消</button><button class="action-btn export-btn" onclick="confirmNoticeCard()">确认</button>';
+            openNoticeOverlay();
+        }
+
+        function openNoticeOverlay() {
+            const mask = document.getElementById('noticeCardMask');
+            if (!mask.classList.contains('active')) noticeReturnFocus = document.activeElement;
             mask.classList.add('active');
+            mask.querySelector('button:not(:disabled)').focus();
         }
 
         function closeNoticeCard() {
             const mask = document.getElementById('noticeCardMask');
-            if (mask) mask.classList.remove('active');
+            if (mask?.classList.contains('active')) {
+                mask.classList.remove('active');
+                noticeReturnFocus?.focus();
+                noticeReturnFocus = null;
+            }
             noticeConfirmAction = null;
+        }
+
+        function handleNoticeDialogKey(event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                if (document.getElementById('proxyWarningContinueBtn')) cancelProxyWarning();
+                else closeNoticeCard();
+                return;
+            }
+            trapDialogFocus(event, 'noticeCardMask');
         }
 
         function confirmNoticeCard() {
@@ -3378,7 +3433,7 @@
                 '建议关闭代理软件后刷新页面重新测试。',
             ].join('\n');
             actions.innerHTML = '<button class="action-btn danger-btn" onclick="cancelProxyWarning()">停止测速</button><button class="action-btn export-btn" id="proxyWarningContinueBtn" onclick="confirmProxyWarning()" disabled>强制继续 (5)</button>';
-            mask.classList.add('active');
+            openNoticeOverlay();
             let remaining = 5;
             const nextBtn = document.getElementById('proxyWarningContinueBtn');
             if (!nextBtn) return;
@@ -3399,8 +3454,7 @@
         }
 
         function hideProxyWarningModal() {
-            const mask = document.getElementById('noticeCardMask');
-            if (mask) mask.classList.remove('active');
+            closeNoticeCard();
             if (proxyWarningCountdownTimer) {
                 window.clearInterval(proxyWarningCountdownTimer);
                 proxyWarningCountdownTimer = null;
@@ -5344,10 +5398,10 @@
         ];
 
         function openResultModal(mode) {
+            resultReturnFocus = document.activeElement;
+            resultHuaweiLoaded = false;
+            resultHuaweiLoading = false;
             resultModalMode = currentMode === 'nsb' ? 'nsb' : mode;
-            const rows = getCurrentResultRows(resultModalMode);
-            if (!rows.length) return showNoticeCard('暂无可操作结果');
-            document.getElementById('resultModalTitle').textContent = '结果操作';
             const formatSelect = document.getElementById('resultFormat');
             if (formatSelect && !formatSelect.value) formatSelect.value = 'txt';
             const nameInput = document.getElementById('resultFileName');
@@ -5361,13 +5415,57 @@
             const qualifiedSelect = document.getElementById('resultQualifiedFilter');
             if (qualifiedSelect) qualifiedSelect.value = 'all';
             if (!resultFieldOrder.length) resultFieldOrder = getDefaultResultFieldOrder(document.getElementById('resultFormat').value);
+            const accountSelect = document.getElementById('githubAccountSelect');
+            const selectedAccount = accountSelect.value;
             renderGitHubAccounts();
+            accountSelect.value = selectedAccount;
             renderResultFieldOptions();
-            document.getElementById('resultModalMask').classList.add('active');
+            showResultActionView('chooser');
+        }
+
+        function showResultActionView(view) {
+            const titles = { chooser: '结果操作', export: '导出文件', github: '上传 GitHub', edgetunnel: '上传 edgetunnel', huawei: '更新华为云 DNS' };
+            if (!titles[view]) return;
+            const mask = document.getElementById('resultModalMask');
+            const previous = mask.dataset.view;
+            mask.dataset.view = view;
+            if (view === 'huawei') {
+                mask.classList.remove('active');
+                openHuaweiPanel(true);
+                return;
+            }
+            document.getElementById('resultModalTitle').textContent = titles[view];
+            mask.classList.add('active');
+            const choices = { export: 'resultExportChoice', github: 'resultGitHubChoice', edgetunnel: 'resultEdgetunnelChoice', huawei: 'resultHuaweiChoice' };
+            document.getElementById(view === 'chooser' ? (choices[previous] || 'resultExportChoice') : 'resultBack').focus();
         }
 
         function closeResultModal() {
             document.getElementById('resultModalMask').classList.remove('active');
+            document.getElementById('huaweiAK').value = '';
+            document.getElementById('huaweiSK').value = '';
+            resultReturnFocus?.focus();
+        }
+
+        function handleResultDialogKey(event) {
+            if (document.getElementById('noticeCardMask').classList.contains('active')) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                if (document.getElementById('resultModalMask').dataset.view === 'chooser') closeResultModal();
+                else showResultActionView('chooser');
+                return;
+            }
+            trapDialogFocus(event, 'resultModalMask');
+        }
+
+        function trapDialogFocus(event, maskID) {
+            if (event.key !== 'Tab') return;
+            if (maskID !== 'noticeCardMask' && document.getElementById('noticeCardMask').classList.contains('active')) return;
+            const controls = [...document.getElementById(maskID).querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')].filter(el => el.getClientRects().length);
+            const first = controls[0], last = controls[controls.length - 1];
+            if (!first) return;
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }
 
         function openSortModal(mode) {
@@ -5590,8 +5688,6 @@
             if (bracketsField) bracketsField.style.display = format === 'txt' ? '' : 'none';
             const rows = getCurrentResultRows(resultModalMode);
             const available = RESULT_FIELDS.filter((f) => f.key === 'ipport' || rows.some((r) => String(r[f.key] ?? '').trim() !== '')).concat(resultCustomFields);
-            document.querySelectorAll('.github-field').forEach((el) => el.style.display = '');
-            document.querySelectorAll('.edgetunnel-field').forEach((el) => el.style.display = '');
             document.getElementById('resultFieldPicker').innerHTML = available.map((f) => `<label class="field-pill"><input type="checkbox" value="${f.key}" ${resultFieldOrder.includes(f.key) ? 'checked' : ''} onchange="toggleResultField('${f.key}', this.checked)"> ${f.label}</label>`).join('');
             updateResultFieldQuickButtons();
             renderResultOrderList();
@@ -6356,27 +6452,31 @@
             }
         }
 
-        function openHuaweiPanel() {
+        function openHuaweiPanel(fromResult = false) {
+            huaweiFromResult = fromResult;
+            document.getElementById('huaweiBack').hidden = !fromResult;
             document.getElementById('settingsMenu').classList.add('hidden');
             document.getElementById('huaweiModalMask').classList.add('active');
-            loadHuaweiConfig();
+            if (!fromResult || (!resultHuaweiLoaded && !resultHuaweiLoading)) loadHuaweiConfig();
             document.getElementById('huaweiAK').focus();
         }
 
         function closeHuaweiPanel() {
             document.getElementById('huaweiModalMask').classList.remove('active');
+            if (huaweiFromResult) {
+                huaweiFromResult = false;
+                showResultActionView('chooser');
+                return;
+            }
             document.getElementById('huaweiAK').value = '';
             document.getElementById('huaweiSK').value = '';
             document.getElementById('settingsToggle').focus();
         }
 
         function handleHuaweiDialogKey(event) {
+            if (document.getElementById('noticeCardMask').classList.contains('active')) return;
             if (event.key === 'Escape') { event.preventDefault(); closeHuaweiPanel(); return; }
-            if (event.key !== 'Tab') return;
-            const controls = [...document.getElementById('huaweiModalMask').querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')];
-            const first = controls[0], last = controls[controls.length - 1];
-            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            trapDialogFocus(event, 'huaweiModalMask');
         }
 
         function clearHuaweiPreview() {
@@ -6387,7 +6487,9 @@
         }
 
         function loadHuaweiConfig() {
-            wsSend({ type: 'huawei_config_get', data: {} });
+            resultHuaweiLoading = wsSend({ type: 'huawei_config_get', data: {} }) === true;
+            if (!resultHuaweiLoading) document.getElementById('huaweiConfigStatus').textContent = '连接未就绪；重连后返回并重试，或重读后端配置';
+            return resultHuaweiLoading;
         }
 
         function saveHuaweiConfig() {
@@ -6470,6 +6572,10 @@
                 return true;
             }
             if (msg.type === 'huawei_error') {
+                if (msg.data.action === 'huawei_config_get') {
+                    resultHuaweiLoading = false;
+                    document.getElementById('huaweiConfigStatus').textContent = msg.data.message || '读取配置失败；请返回重试或重读后端配置';
+                }
                 document.getElementById('huaweiDNSStatus').textContent = msg.data.message || '华为云请求失败';
                 document.getElementById('huaweiDNSStatus').className = 'upload-status error';
                 document.getElementById('huaweiConfirm').disabled = true;
@@ -6485,6 +6591,10 @@
             const status = document.getElementById('huaweiDNSStatus');
             status.className = 'upload-status';
             if (action === 'huawei_config_get' || action === 'huawei_config_set') {
+                if (action === 'huawei_config_get') {
+                    resultHuaweiLoading = false;
+                    resultHuaweiLoaded = true;
+                }
                 document.getElementById('huaweiRegion').innerHTML = data.regions.map(id => `<option value="${escapeHTML(id)}">${escapeHTML(id)} · dns.${escapeHTML(id)}.myhuaweicloud.com</option>`).join('');
                 document.getElementById('huaweiRegion').value = data.region || 'cn-north-4';
                 document.getElementById('huaweiProjectID').value = data.projectId || '';

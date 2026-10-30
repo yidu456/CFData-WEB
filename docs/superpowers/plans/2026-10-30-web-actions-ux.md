@@ -21,10 +21,10 @@
 **Consumes:** openResultModal(mode), existing result/account/upload forms, openHuaweiPanel/closeHuaweiPanel and current gated publisher functions.
 **Produces:** chooser with four actions; dedicated views with stable original IDs and working back/focus paths; no content/secret duplication.
 
-- [ ] Trace all result modal open/close/format/preview/quick-file and Huawei entry/focus callers; add failing tests for chooser-first, one visible destination, preserved config, back/Escape, empty-batch DNS config and forbidden mutation.
-- [ ] Implement minimal in-modal destination navigation; show only selected destination fields/actions/shared output controls; connect DNS view to reusable Huawei panel with return path. Preserve legacy entry and account functions.
-- [ ] Verify real mocked Chrome desktop/mobile including existing suites updated for intentional navigation; no actual upload/DNS update.
-- [ ] Controller review, verify test/vet/JS/builds; commit/push feat: separate Web result operation destinations.
+- [x] Trace all result modal open/close/format/preview/quick-file and Huawei entry/focus callers; add failing tests for chooser-first, one visible destination, preserved config, back/Escape, empty-batch DNS config and forbidden mutation.
+- [x] Implement minimal in-modal destination navigation; show only selected destination fields/actions/shared output controls; connect DNS view to reusable Huawei panel with return path. Preserve legacy entry and account functions.
+- [x] Verify real mocked Chrome desktop/mobile including existing suites updated for intentional navigation; no actual upload/DNS update.
+- [x] Controller review, verify test/vet/JS/builds; commit/push feat: separate Web result operation destinations.
 
 ## Task 2: Datacenter Search and Accessible Selection
 
