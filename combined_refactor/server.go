@@ -175,6 +175,21 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 			})
 		},
+		"start_web_batch": func(data json.RawMessage) {
+			var params startWebBatchRequest
+			if err := json.Unmarshal(data, &params); err != nil {
+				session.sendWSMessage("error", "start_web_batch 参数解析失败")
+				return
+			}
+			params, err := normalizeWebBatchRequest(params)
+			if err != nil {
+				session.sendWSMessage("error", "批量测试参数无效: "+err.Error())
+				return
+			}
+			session.startTaskNamed("多数据中心测试", "official", map[string]interface{}{"datacenters": params.Datacenters, "port": params.Port, "delay": params.MaxLatencyMS, "speedMin": params.MinSpeedMB, "finalLimit": params.Limit}, func(ctx context.Context, session *appSession) {
+				_ = runWebBatch(ctx, session, params, defaultWebBatchDependencies())
+			})
+		},
 		"start_test": func(data json.RawMessage) {
 			var params startTestRequest
 			if err := json.Unmarshal(data, &params); err != nil {
@@ -396,6 +411,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				backgroundSession.scanMutex.Unlock()
 				if len(scanResults) > 0 {
 					backgroundSession.sendWSMessage("scan_complete_wait_dc", buildDCList(scanResults))
+				}
+				if backgroundSession.replayCompletedWebBatch() {
+					return
 				}
 				backgroundSession.testMutex.Lock()
 				results := append([]TestResult(nil), backgroundSession.testResults...)

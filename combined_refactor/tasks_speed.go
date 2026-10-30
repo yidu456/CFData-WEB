@@ -90,6 +90,7 @@ func runWindowedSpeedTest(ctx context.Context, ip string, port int, customURL st
 
 	done := false
 	canceled := false
+	var readErr error
 loop:
 	for !done {
 		select {
@@ -103,6 +104,9 @@ loop:
 				totalBytes += int64(chunk.n)
 			}
 			if chunk.err != nil {
+				if chunk.err != io.EOF {
+					readErr = chunk.err
+				}
 				done = true
 				break loop
 			}
@@ -115,6 +119,9 @@ loop:
 
 	if canceled {
 		return 0, "测速任务已终止"
+	}
+	if readErr != nil {
+		return 0, "测速失败"
 	}
 
 	if totalBytes <= 0 {
@@ -139,6 +146,16 @@ func runSpeedTest(ctx context.Context, session *appSession, ip string, port int,
 	session.sendWSMessage("log", fmt.Sprintf("开始对 IP %s 端口 %d 进行测速...", ip, port))
 
 	speedMB, speedErr := runWindowedSpeedTest(ctx, ip, port, customURL)
+	if ctx.Err() != nil {
+		return
+	}
+	session.testMutex.Lock()
+	for i := range session.testResults {
+		if session.testResults[i].IP == ip {
+			applyOfficialSpeedMeasurement(&session.testResults[i], speedMB, speedErr)
+		}
+	}
+	session.testMutex.Unlock()
 	if speedErr != "" {
 		if ctx.Err() != nil {
 			return
@@ -160,6 +177,20 @@ const speedRateLimitMessage = "检测到触发速率限制，请稍后重试或�
 
 func isSpeedRateLimited(speedErr string) bool {
 	return strings.Contains(speedErr, "速率限制")
+}
+
+func applyOfficialSpeedMeasurement(result *TestResult, speedMB float64, speedErr string) {
+	result.MeasuredSpeedMB, result.SpeedMeasured = 0, false
+	if speedErr != "" {
+		result.Speed = speedErr
+		return
+	}
+	if !finiteNonnegative(speedMB) {
+		result.Speed = "测速失败"
+		return
+	}
+	result.Speed = fmt.Sprintf("%.2fMB/s", speedMB)
+	result.MeasuredSpeedMB, result.SpeedMeasured = speedMB, true
 }
 
 func runOfficialSpeedTestsCore(ctx context.Context, results []TestResult, port int, limit int, speedMinMB float64, customURL string, onResult func(current, total, qualified int, result TestResult), onRateLimited func()) ([]TestResult, []TestResult) {
@@ -187,8 +218,8 @@ func runOfficialSpeedTestsCore(ctx context.Context, results []TestResult, port i
 			break
 		}
 		speedMB, speedErr := runWindowedSpeedTest(ctx, results[i].IP, port, customURL)
+		applyOfficialSpeedMeasurement(&results[i], speedMB, speedErr)
 		if speedErr != "" {
-			results[i].Speed = speedErr
 			if isSpeedRateLimited(speedErr) {
 				consecutiveRateLimited++
 			} else {
@@ -196,7 +227,6 @@ func runOfficialSpeedTestsCore(ctx context.Context, results []TestResult, port i
 			}
 		} else {
 			consecutiveRateLimited = 0
-			results[i].Speed = fmt.Sprintf("%.2fMB/s", speedMB)
 			if speedMB >= speedMinMB {
 				qualified = append(qualified, results[i])
 			}
@@ -276,13 +306,15 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 	})
 
 	session.testMutex.Lock()
-	byIP := make(map[string]string, len(updated))
+	byIP := make(map[string]TestResult, len(updated))
 	for _, result := range updated {
-		byIP[result.IP] = result.Speed
+		byIP[result.IP] = result
 	}
 	for idx := range session.testResults {
-		if speed, ok := byIP[session.testResults[idx].IP]; ok {
-			session.testResults[idx].Speed = speed
+		if result, ok := byIP[session.testResults[idx].IP]; ok {
+			session.testResults[idx].Speed = result.Speed
+			session.testResults[idx].MeasuredSpeedMB = result.MeasuredSpeedMB
+			session.testResults[idx].SpeedMeasured = result.SpeedMeasured
 		}
 	}
 	totalQualified := countOfficialQualifiedResults(session.testResults, speedMin)

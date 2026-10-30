@@ -25,22 +25,24 @@ func runBoundedWorkers(ctx context.Context, total, maxWorkers, progressEvery int
 	var lastEmit time.Time
 	wasCanceled := false
 
+schedule:
 	for i := 0; i < total; i++ {
 		select {
 		case <-ctx.Done():
 			wasCanceled = true
-			return wasCanceled
+			break schedule
 		case slots <- struct{}{}:
 		}
 
 		wg.Add(1)
 		go func(idx int) {
+			// Work and its progress callback must both finish before task teardown.
+			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Printf("worker panic (idx=%d): %v\n%s\n", idx, r, debug.Stack())
 				}
 				<-slots
-				wg.Done()
 
 				countMutex.Lock()
 				count++

@@ -16,7 +16,7 @@
 - Only the controller commits/pushes after task review. One commit per completed task; no force-push, no main/beta modifications, no changes under .github/ or reference root Go sources.
 - Go executable: $env:TEMP/cfdata-go1.26.2/go/bin/go.exe. Prefix PATH with its bin for commands. Run go test ./..., go vet ./..., gofmt checks and CGO_ENABLED=0 Windows/Linux builds from combined_refactor. Linux output ../release_assets/cfdata-test; Windows output ../release_assets/cfdata-web-preview.exe. Binaries are ignored.
 - All new behavior requires failing tests before implementation. Use mocks; never scan targets or publish to real cloud services during QA.
-- Keep implementation scoped to Web. Shared helpers may support later CLI work, but do not change CLI behavior or scheduling now.
+- Multi-select supports every dynamically discovered datacenter; FRA/SJC are examples only, not restrictions. Keep implementation scoped to Web. Shared helpers may support later CLI work, but do not change CLI behavior or scheduling now.
 - Follow the spec's secret handling, origin/auth checks, IP validation, completed-task ownership, cancellation, empty-results, and independent publishing requirements.
 
 ## Task 1: Shared Qualified Selection Policy
@@ -37,11 +37,13 @@
 **Consumes:** Task 1 officialSelectionPolicy/selectOfficialResults.
 **Produces:** Completed backend-owned selected results and policy snapshot in appSession; one batch request accepts selected datacenters, MaxLatencyMS/MinSpeedMB/Limit, test port and speed URL. It measures every latency-qualified candidate before selection and exposes selected results/summary to the UI.
 
-- [ ] Write failing tests for request/policy validation, multi-DC candidate filtering, no selected candidates, complete speed measurements beyond 10, metadata retention, cancellation/failure rejecting publishable state, and final totals.
-- [ ] Add datacenter checkboxes and a batch action without removing existing row actions. Reuse existing threshold controls where possible, but label final limit separately from existing stop-after-qualified count. Default final total limit 10.
-- [ ] Implement backend-owned detailed test -> complete speed test -> selector -> final-results events, preserving legacy single-DC modes. Do not rely on a browser callback for subsequent batch stages. UI displays selection state, progress, ranking and qualified count, supports keyboard/mobile controls, and saves only nonsecret settings.
-- [ ] Add a reusable accessor for completed selected backend results for Task 3. Do not accept arbitrary browser rows as DNS publishing authority. Do not clear verified state incorrectly on simple UI rendering.
-- [ ] Verify Go and JavaScript tests, vet, builds and legacy behavior. Controller reviews, commits and pushes feat: add Web multi-datacenter top-results testing.
+- [x] Write failing tests for request/policy validation, multi-DC candidate filtering, no selected candidates, complete speed measurements beyond 10, metadata retention, cancellation/failure rejecting publishable state, and final totals.
+- [x] Add datacenter checkboxes and a batch action without removing existing row actions. Reuse existing threshold controls where possible, but label final limit separately from existing stop-after-qualified count. Default final total limit 10.
+- [x] Implement backend-owned detailed test -> complete speed test -> selector -> final-results events, preserving legacy single-DC modes. Do not rely on a browser callback for subsequent batch stages. UI displays selection state, progress, ranking and qualified count, supports keyboard/mobile controls, and saves only nonsecret settings.
+- [x] Add a reusable accessor for completed selected backend results for Task 3. Do not accept arbitrary browser rows as DNS publishing authority. Do not clear verified state incorrectly on simple UI rendering.
+- [x] Verify Go and JavaScript tests, vet, builds and legacy behavior. Controller reviews, commits and pushes feat: add Web multi-datacenter top-results testing.
+
+- [x] User UI refinement: top datacenter dropdown with synchronized multi-select checkboxes, independent of auto-speed switch. Explain empty discovery state; retain separately labelled legacy single-center auto target only when needed. Verify keyboard/mobile selection and existing config/auto callers.
 
 ## Task 3: Complete Huawei DNS Configuration and Publishing UI
 

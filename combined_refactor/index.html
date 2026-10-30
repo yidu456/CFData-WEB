@@ -368,6 +368,42 @@
             flex-shrink: 0;
         }
 
+        .web-dc-picker {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .web-dc-picker summary {
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            min-height: 44px;
+            box-sizing: border-box;
+            overflow-wrap: anywhere;
+        }
+
+        .web-dc-dropdown {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 6px);
+            z-index: 30;
+            max-height: 280px;
+            overflow-y: auto;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-bg);
+            box-shadow: var(--shadow);
+        }
+
+        .web-dc-options { border: 0; margin: 0; padding: 0; }
+        .web-dc-options label { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+        .web-dc-options input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; padding: 0; }
+
         .option-item input,
         .option-item select {
             flex: 1;
@@ -1726,7 +1762,7 @@
                     <input id="officialThreads" type="number" value="100" placeholder="默认 100">
                 </div>
                 <div class="option-item">
-                    <span class="label" title="超过此值的连接将被过滤，单位毫秒">⏱️ 扫描合格延迟</span>
+                    <span class="label" title="扫描及多中心详细测试的最大平均延迟，单位毫秒">⏱️ 扫描 / 测试合格延迟</span>
                     <input id="officialDelay" type="number" value="500" placeholder="默认 500ms">
                 </div>
                 <div class="option-item">
@@ -1734,8 +1770,12 @@
                     <input id="officialSpeedMin" type="number" value="0.1" step="0.01" placeholder="默认 0.1MB/s" oninput="syncOfficialSpeedConfigState()">
                 </div>
                 <div class="option-item">
-                    <span class="label" title="测速达标结果的最大数量，关闭测速填 0">🏁 测速结果数量</span>
+                    <span class="label" title="仅用于原单中心流程，达到此合格数量即停止测速，关闭填 0">🏁 单中心测速停止数量</span>
                     <input id="officialSpeedLimit" type="number" value="5" placeholder="0 关闭测速">
+                </div>
+                <div class="option-item">
+                    <label class="label" for="webBatchLimit" title="多中心测完全部延迟合格 IP 后，按速度排名保留的总数；不按中心分配">多中心最终总数</label>
+                    <input id="webBatchLimit" type="number" value="10" min="1" max="10000" step="1" aria-label="多数据中心最终结果总数">
                 </div>
                 <div class="option-item">
                     <span class="label" title="扫描完成后自动进行详细测试和测速">🧪 自动测速</span>
@@ -1745,7 +1785,17 @@
                     </select>
                 </div>
                 <div class="option-item">
-                    <span class="label" title="指定数据中心，留空自动选择">🏢 数据中心</span>
+                    <span class="label">🏢 数据中心（多选）</span>
+                    <details id="webDCSelector" class="web-dc-picker" onkeydown="if (event.key === 'Escape') { this.open = false; this.querySelector('summary').focus(); }">
+                        <summary id="webDCSummary" aria-controls="webDCChoices">扫描后选择数据中心</summary>
+                        <div class="web-dc-dropdown">
+                            <p id="webDCEmpty">先完成一次扫描，才能从发现的数据中心中选择；无需开启自动测速。</p>
+                            <fieldset id="webDCChoices" class="web-dc-options" hidden></fieldset>
+                        </div>
+                    </details>
+                </div>
+                <div id="officialAutoTargetSection" class="option-item" style="display:none;">
+                    <label class="label" for="officialTargetDC" title="仅用于原自动测速流程，留空按原规则自动选择一个中心">自动测速单中心目标</label>
                     <input id="officialTargetDC" type="text" value="" placeholder="留空自动选择" disabled>
                 </div>
                 <div class="option-item full-width">
@@ -1958,10 +2008,15 @@
                     <span id="currentTestDC"
                         style="margin-left:10px;font-size:12px;color:var(--text-secondary);"></span>
                 </h3>
+                <div class="table-actions" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;">
+                    <button class="action-btn export-btn" id="btnWebBatch" onclick="startWebBatch()" disabled>测试已选数据中心</button>
+                    <span id="webBatchSelection" role="status" aria-live="polite">已选 0 个数据中心</span>
+                </div>
                 <div class="scroll-table">
                     <table id="dcTable">
                         <thead>
                             <tr>
+                                <th scope="col">批量选择</th>
                                 <th>数据中心</th>
                                 <th>落地区域</th>
                                 <th>城市</th>
@@ -2009,6 +2064,7 @@
 
         <div id="test" class="tab-content">
             <div class="section-box">
+                <p id="webBatchSummary" role="status" aria-live="polite" style="color:var(--text-secondary);"></p>
                 <h3 style="display:flex;justify-content:space-between;align-items:center;">
                     <span>详细测试结果 <span class="badge" id="testCount">0</span></span>
                     <span class="table-actions">
@@ -2415,6 +2471,9 @@
         let scanData = [];
         let testData = [];
         let dcList = [];
+        let selectedWebDCs = new Set();
+        let webBatchRunning = false;
+        let completedWebBatch = null;
         let testedDCs = new Set();
         let currentTestingDC = '';
         let scanResultsCount = 0;
@@ -2621,6 +2680,7 @@
         function initializeUI() {
             updateNSBSpeedControls();
             updateOfficialAutoSpeedControls();
+            updateWebBatchSelection();
             updateBatchSpeedButton();
         }
 
@@ -2629,6 +2689,7 @@
             const targetDC = document.getElementById('officialTargetDC');
             if (!autoSpeed || !targetDC) return;
             targetDC.disabled = String(autoSpeed.value || 'off').toLowerCase() !== 'on';
+            document.getElementById('officialAutoTargetSection').style.display = targetDC.disabled ? 'none' : 'flex';
             if (targetDC.disabled) targetDC.value = '';
         }
 
@@ -2818,6 +2879,7 @@
                     delay: val('officialDelay'),
                     speedMin: val('officialSpeedMin'),
                     speedLimit: val('officialSpeedLimit'),
+                    finalLimit: val('webBatchLimit'),
                     autoSpeed: selVal('officialAutoSpeed'),
                     targetDC: val('officialTargetDC'),
                     speedUrl: resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset'),
@@ -2858,6 +2920,7 @@
             setValue('officialDelay', o.delay);
             setValue('officialSpeedMin', o.speedMin);
             setValue('officialSpeedLimit', o.speedLimit);
+            setValue('webBatchLimit', o.finalLimit);
             setValue('officialAutoSpeed', o.autoSpeed);
             setValue('officialTargetDC', o.targetDC);
             setValue('nsbScanMode', n.scanMode);
@@ -3601,7 +3664,8 @@
             if (!card) return;
             const isComplete = !snapshot.running && snapshot.phase && snapshot.phase !== '-' && snapshot.phase !== '处理中' && snapshot.phase !== '扫描中' && snapshot.phase !== '详细测试中' && snapshot.phase !== '测速中';
             card.classList.toggle('active', !!snapshot.running || isComplete);
-            const title = isComplete ? `✅ ${snapshot.phase || '任务完成'}` : `🕘 ${snapshot.label || '后台任务运行中'}`;
+            const outcomeIcon = snapshot.webBatchStatus === 'failed' ? '⚠️' : (snapshot.webBatchStatus === 'cancelled' ? '⏹️' : '✅');
+            const title = isComplete ? `${outcomeIcon} ${snapshot.phase || '任务完成'}` : `🕘 ${snapshot.label || '后台任务运行中'}`;
             document.getElementById('backgroundStatusTitle').textContent = title;
             const source = snapshot.params?.sourceURL || snapshot.params?.fileName || (snapshot.mode === 'official' ? '官方内置地址库' : '') || snapshot.params?.outFile || snapshot.params?.dc || '-';
             document.getElementById('backgroundSource').textContent = source;
@@ -3662,6 +3726,11 @@
             setValue('officialSpeedLimit', params.speedLimit);
             setValue('officialSpeedMin', params.speedMin);
             setValue('officialTargetDC', params.dc);
+            setValue('webBatchLimit', params.finalLimit);
+            if (Array.isArray(params.datacenters)) {
+                selectedWebDCs = new Set(params.datacenters.map(dc => String(dc).trim().toUpperCase()).filter(dc => /^[A-Z]{3}$/.test(dc)));
+                updateWebBatchSelection();
+            }
             setValue('nsbThreads', params.maxThreads);
             setValue('nsbFallbackPort', params.fallbackPort);
             setValue('nsbResultLimit', params.resultLimit);
@@ -3715,6 +3784,7 @@
         function finishRunningTask(buttonText = '✨ 开始扫描与测试') {
             const wasBackgroundTask = backgroundTaskActive;
             isTaskRunning = false;
+            updateWebBatchSelection();
             isStoppingTask = false;
             if (!wasBackgroundTask) {
                 backgroundTaskActive = false;
@@ -3751,6 +3821,9 @@
         function resetStoppedTaskUI(message = '已手动终止') {
             clearStopWatchdog();
             isStoppingTask = false;
+            webBatchRunning = false;
+            completedWebBatch = null;
+            document.getElementById('webBatchSummary').textContent = message + '，不可发布本次结果';
             officialAutoSpeedPending = false;
             officialAutoStage = '';
             officialBatchSpeedRunning = false;
@@ -4047,7 +4120,7 @@
             filter = normalizeQualifiedFilter(filter);
             if (filter === 'all') return true;
             const speed = getOfficialRowSpeed(row);
-            const status = getSpeedStatus(speed, isOfficialSpeedQualified(speed));
+            const status = getSpeedStatus(speed, row.BatchQualified ?? isOfficialSpeedQualified(speed));
             return status === filter;
         }
 
@@ -4474,7 +4547,9 @@
         }
 
         function showDCSelection(list) {
-            dcList = list || [];
+            dcList = (list || []).filter(dc => /^[A-Z]{3}$/.test(dc.DataCenter));
+            const available = new Set(dcList.map(dc => dc.DataCenter));
+            selectedWebDCs = new Set([...selectedWebDCs].filter(dc => available.has(dc)));
             const tbody = document.querySelector('#dcTable tbody');
             tbody.innerHTML = '';
             dcList.forEach((dc) => {
@@ -4482,17 +4557,136 @@
                 const isTesting = currentTestingDC === dc.DataCenter;
                 const lcFactor = getLatencyColorFactor();
                 const latencyColor = getLatencyColor(dc.MinLatency, lcFactor);
-                const btn = isTesting ? `<button class="action-btn" disabled>测试中...</button>` : (isTested ? `<button class="action-btn selected" onclick="selectDC('${dc.DataCenter}')">重新测试</button>` : `<button class="action-btn" onclick="selectDC('${dc.DataCenter}')">选择测试</button>`);
-                const tr = `<tr><td><strong>${dc.DataCenter}</strong></td><td>${dc.DCCountry || '-'}</td><td>${dc.City}</td><td>${dc.IPCount}</td><td style="color:${latencyColor}; font-weight:600;">${dc.MinLatency} ms</td><td>${btn}</td></tr>`;
+                const btn = isTesting ? `<button class="action-btn" disabled>测试中...</button>` : `<button class="action-btn${isTested ? ' selected' : ''}" onclick="selectDC('${dc.DataCenter}')" ${isTaskRunning ? 'disabled' : ''}>${isTested ? '重新测试' : '选择测试'}</button>`;
+                const checkbox = `<label style="display:flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;"><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="批量选择 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)" ${selectedWebDCs.has(dc.DataCenter) ? 'checked' : ''} ${isTaskRunning ? 'disabled' : ''}></label>`;
+                const tr = `<tr><td>${checkbox}</td><td><strong>${dc.DataCenter}</strong></td><td>${escapeHTML(dc.DCCountry || '-')}</td><td>${escapeHTML(dc.City)}</td><td>${dc.IPCount}</td><td style="color:${latencyColor}; font-weight:600;">${dc.MinLatency} ms</td><td>${btn}</td></tr>`;
                 tbody.insertAdjacentHTML('beforeend', tr);
             });
             updateBadge('dcCount', dcList.length);
             document.getElementById('dcSection').style.display = dcList.length ? 'block' : 'none';
+            updateWebBatchSelection();
+        }
+
+        function toggleWebDatacenter(dc, checked) {
+            if (isTaskRunning || !dcList.some(item => item.DataCenter === dc)) return;
+            if (checked) selectedWebDCs.add(dc); else selectedWebDCs.delete(dc);
+            updateWebBatchSelection();
+        }
+
+        function updateWebBatchSelection() {
+            const selected = [...selectedWebDCs].filter(dc => dcList.some(item => item.DataCenter === dc)).sort();
+            document.getElementById('webBatchSelection').textContent = `已选 ${selected.length} 个数据中心${selected.length ? ': ' + selected.join(', ') : ''}`;
+            document.getElementById('btnWebBatch').disabled = isTaskRunning || currentMode !== 'official' || selected.length === 0;
+            document.getElementById('webDCSummary').textContent = selected.length ? selected.join(', ') : (dcList.length ? '选择数据中心（可多选）' : '扫描后选择数据中心');
+            document.getElementById('webDCEmpty').hidden = dcList.length > 0;
+            const choices = document.getElementById('webDCChoices');
+            choices.hidden = dcList.length === 0;
+            choices.disabled = isTaskRunning;
+            const discovered = JSON.stringify(dcList);
+            // Preserve focused checkbox nodes when only selection state changes.
+            if (choices.dataset.datacenters !== discovered) {
+                choices.innerHTML = dcList.length ? '<legend>选择参与批量测试的数据中心</legend>' + dcList.map(dc => `<label><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="多选数据中心 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)"><span>${dc.DataCenter} ${escapeHTML(dc.City || '')}</span></label>`).join('') : '';
+                choices.dataset.datacenters = discovered;
+            }
+            document.querySelectorAll('#webDCChoices input[data-dc], #dcTable input[data-dc]').forEach(input => {
+                input.checked = selectedWebDCs.has(input.dataset.dc);
+                input.disabled = isTaskRunning;
+            });
+        }
+
+        function getWebBatchRequest() {
+            const datacenters = [...selectedWebDCs].filter(dc => dcList.some(item => item.DataCenter === dc)).sort();
+            const port = Number(document.getElementById('officialTestPort').value);
+            const maxLatencyMS = Number(document.getElementById('officialDelay').value);
+            const minSpeedMB = Number(document.getElementById('officialSpeedMin').value);
+            const limit = Number(document.getElementById('webBatchLimit').value);
+            if (!datacenters.length) throw new Error('请先选择数据中心');
+            if (!Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(maxLatencyMS) || maxLatencyMS < 1 || maxLatencyMS > 60000 || !Number.isFinite(minSpeedMB) || minSpeedMB < 0 || !Number.isInteger(limit) || limit < 1 || limit > 10000) {
+                throw new Error('请输入有效端口、1-60000ms 延迟、非负速度及 1-10000 最终总数');
+            }
+            return { datacenters, port, maxLatencyMS, minSpeedMB, limit, url: resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset'), scanMode: getScanMode() };
+        }
+
+        function startWebBatch() {
+            if (isTaskRunning || currentMode !== 'official') return;
+            if (requireProxyWarning(startWebBatch)) return;
+            let request;
+            try { request = getWebBatchRequest(); } catch (err) { showNoticeCard(err.message); return; }
+            if (!wsSend({ type: 'start_web_batch', data: request })) { showNoticeCard('连接未就绪，请等待重连后再试'); return; }
+            webBatchRunning = true;
+            completedWebBatch = null;
+            officialAutoSpeedPending = false;
+            officialAutoStage = '';
+            officialBatchSpeedRunning = false;
+            officialTestCompletePending = false;
+            officialContinueSpeedUnlocked = false;
+            officialTestQualifiedFilter = 'all';
+            officialTestLatencyFilter = 0;
+            officialTestLossFilter = 100;
+            testData = [];
+            isTaskRunning = true;
+            runningTaskLabel = '多中心 ' + request.datacenters.join(', ');
+            runningTaskMode = 'official';
+            runningTaskTab = 'test';
+            currentTestingDC = '';
+            setStartLoading(getRunningButtonText());
+            resetProgress();
+            progressBox.style.display = 'block';
+            document.getElementById('webBatchSummary').textContent = '准备详细测试；所有延迟合格地址测速完毕后统一排名';
+            renderAllTestResults();
+            showDCSelection(dcList);
+            switchTab('test');
+        }
+
+        function handleWebBatchMessage(msg) {
+            const p = msg.data || {};
+            const status = document.getElementById('webBatchSummary');
+            switch (msg.type) {
+                case 'web_batch_invalidated':
+                    completedWebBatch = null;
+                    break;
+                case 'web_batch_started':
+                    webBatchRunning = true;
+                    status.textContent = `已选 ${p.policy.Datacenters.join(', ')}；候选 ${p.candidateCount}；未发现: ${(p.missingDatacenters || []).join(', ') || '无'}`;
+                    break;
+                case 'web_batch_progress':
+                    if (isStoppingTask) break;
+                    updateProgress(p.current || 0, p.total || 1, p.phase === 'speed' ? '全部候选测速中' : '详细延迟测试中');
+                    if (p.phase === 'speed') status.textContent = `测速 ${p.current || 0}/${p.total || 0}，达标 ${p.qualified || 0}；全部测完再取前 N`;
+                    break;
+                case 'web_batch_result':
+                    if (isStoppingTask) break;
+                    {
+                        const row = { ...p.result, BatchQualified: p.qualified };
+                        const index = testData.findIndex(item => item.IP === row.IP);
+                        if (index < 0) testData.push(row); else testData[index] = row;
+                        renderAllTestResults();
+                    }
+                    break;
+                case 'web_batch_complete':
+                    if (isStoppingTask) break;
+                    completedWebBatch = p;
+                    testData = p.results.map((row, index) => ({ ...row, BatchQualified: true, BatchRank: index + 1 }));
+                    officialSpeedEnabledForResults = testData.length > 0;
+                    officialContinueSpeedUnlocked = false;
+                    officialTestQualifiedFilter = 'all';
+                    currentTestingDC = '';
+                    p.policy.Datacenters.forEach(dc => testedDCs.add(dc));
+                    renderAllTestResults();
+                    status.textContent = `全部测速完成：${p.measuredCount} 个已测，${p.qualifiedCount} 个达标，最终 ${p.results.length}/${p.policy.Limit}；速度降序 / 延迟升序。未发现: ${(p.missingDatacenters || []).join(', ') || '无'}${p.results.length ? '' : '；无结果，不可发布'}`;
+                    updateProgress(p.measuredCount, Math.max(p.measuredCount, 1), '多中心排名完成');
+                    // The server owns completion; task_complete releases controls and publication hooks.
+                    break;
+                case 'web_batch_failed':
+                    completedWebBatch = null;
+                    status.textContent = `${p.status === 'cancelled' ? '已终止' : '测试失败'}：${p.message || ''}；不可发布本次结果`;
+                    break;
+            }
         }
 
         function selectDC(dc) {
             if (requireProxyWarning(() => selectDC(dc))) return;
-            if (isTaskRunning && currentTestingDC !== '') return;
+            if (isTaskRunning) return;
             const port = parseInt(document.getElementById('officialTestPort').value);
             const delay = parseInt(document.getElementById('officialDelay').value) || 500;
 
@@ -4531,13 +4725,13 @@
             const port = res.Port || parseInt(document.getElementById('officialTestPort').value) || 443;
             const meta = testResultToObject(res);
             const speedText = res.Speed || '未测速';
-            const speedStatus = getSpeedStatus(speedText, isOfficialSpeedQualified(speedText));
+            const speedStatus = getSpeedStatus(speedText, res.BatchQualified ?? isOfficialSpeedQualified(speedText));
             const speedColor = speedText.includes('MB/s') ? (parseFloat(speedText) > SPEED_GREEN ? '#10b981' : '#f59e0b') : (speedText === '未测速' ? 'inherit' : '#ef4444');
             const isTesting = currentSpeedTestingIP === res.IP;
             const speedDisabled = isTesting || isTaskRunning || officialBatchSpeedRunning;
             const buttonText = isTesting ? '测速中' : (res.Speed ? '重新测速' : '测速');
             const lcFactor = getLatencyColorFactor();
-            const row = `<tr class="${speedStatus === 'qualified' ? 'row-qualified' : (speedStatus === 'unqualified' ? 'row-unqualified' : '')}"><td>${renderIPCell(res.IP, res.OriginalInput || res.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${port}', event)">${port}</span></td><td>${meta.dc || '-'}</td><td>${meta.dcCountry || '-'}</td><td>${meta.region || '-'}</td><td>${meta.city || '-'}</td><td>${getScanModeLabel()}</td><td>${(res.LossRate * 100).toFixed(0)}%</td><td>${(res.MinLatency / 1_000_000).toFixed(0)} ms</td><td>${(res.MaxLatency / 1_000_000).toFixed(0)} ms</td><td style="color:${getLatencyColor(res.AvgLatency / 1_000_000, lcFactor)}; font-weight:600;">${(res.AvgLatency / 1_000_000).toFixed(0)} ms</td><td style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:none;"><span class="speed-result" id="speed-val-${res.IP.replace(/[:.]/g, '_')}" style="color:${speedColor};"><span>${speedText}</span>${renderSpeedStatusTag(speedStatus)}</span><button class="action-btn speed-btn" id="btn-speed-${res.IP.replace(/[:.]/g, '_')}" onclick="runSpeedTest('${res.IP}')" ${speedDisabled ? 'disabled' : ''}>${buttonText}</button></td></tr>`;
+            const row = `<tr class="${speedStatus === 'qualified' ? 'row-qualified' : (speedStatus === 'unqualified' ? 'row-unqualified' : '')}"><td>${res.BatchRank ? `<span class="badge" aria-label="速度排名 ${res.BatchRank}">#${res.BatchRank}</span> ` : ""}${renderIPCell(res.IP, res.OriginalInput || res.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${port}', event)">${port}</span></td><td>${meta.dc || '-'}</td><td>${meta.dcCountry || '-'}</td><td>${meta.region || '-'}</td><td>${meta.city || '-'}</td><td>${getScanModeLabel()}</td><td>${(res.LossRate * 100).toFixed(0)}%</td><td>${(res.MinLatency / 1_000_000).toFixed(0)} ms</td><td>${(res.MaxLatency / 1_000_000).toFixed(0)} ms</td><td style="color:${getLatencyColor(res.AvgLatency / 1_000_000, lcFactor)}; font-weight:600;">${(res.AvgLatency / 1_000_000).toFixed(0)} ms</td><td style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:none;"><span class="speed-result" id="speed-val-${res.IP.replace(/[:.]/g, '_')}" style="color:${speedColor};"><span>${speedText}</span>${renderSpeedStatusTag(speedStatus)}</span><button class="action-btn speed-btn" id="btn-speed-${res.IP.replace(/[:.]/g, '_')}" onclick="runSpeedTest('${res.IP}')" ${speedDisabled ? 'disabled' : ''}>${buttonText}</button></td></tr>`;
             document.querySelector('#testTable tbody').insertAdjacentHTML('beforeend', row);
         }
 
@@ -4636,7 +4830,11 @@
             const btn = document.getElementById(`btn-speed-${data.ip.replace(/[:.]/g, '_')}`);
             const val = document.getElementById(`speed-val-${data.ip.replace(/[:.]/g, '_')}`);
             const item = testData.find((r) => r.IP === data.ip);
-            if (item) item.Speed = data.speed;
+            if (item) {
+                item.Speed = data.speed;
+                delete item.BatchQualified;
+                delete item.BatchRank;
+            }
             officialSpeedEnabledForResults = testData.some((r) => isOfficialSpeedQualified(r.Speed));
             const speedStatus = getSpeedStatus(data.speed, isOfficialSpeedQualified(data.speed));
             if (currentSpeedTestingIP === data.ip) {
@@ -4907,6 +5105,8 @@
             scanData = [];
             testData = [];
             dcList = [];
+            selectedWebDCs.clear();
+            updateWebBatchSelection();
             testedDCs.clear();
             currentTestingDC = '';
             scanResultsCount = 0;
@@ -5965,10 +6165,10 @@
                 ip: r.IP || '',
                 port: String(port),
                 ipport: `${r.IP || ''}:${port}`,
-                dc: scan.DataCenter || r.DataCenter || '',
-                dcCountry: scan.DCCountry || r.DCCountry || '',
-                region: scan.Region || r.Region || '',
-                city: scan.City || r.City || '',
+                dc: r.DataCenter || scan.DataCenter || '',
+                dcCountry: r.DCCountry || scan.DCCountry || '',
+                region: r.Region || scan.Region || '',
+                city: r.City || scan.City || '',
                 latency: `${(r.AvgLatency / 1_000_000).toFixed(0)}ms`,
                 speed: r.Speed || '未测速',
                 lossRate: r.LossRate != null ? `${(r.LossRate * 100).toFixed(0)}%` : '',
@@ -6280,6 +6480,14 @@
 
         function handleMessage(msg) {
             switch (msg.type) {
+                case 'web_batch_invalidated':
+                case 'web_batch_started':
+                case 'web_batch_progress':
+                case 'web_batch_result':
+                case 'web_batch_complete':
+                case 'web_batch_failed':
+                    handleWebBatchMessage(msg);
+                    break;
                 case 'init_config':
                     defaultSpeedTestUrl = msg.data.speedTestURL || defaultSpeedTestUrl;
                     webDebugMode = !!msg.data.debug;
@@ -6570,6 +6778,12 @@
 
                 case 'error':
                     recordWebDebugError('server_error', msg.data);
+                    if (webBatchRunning) {
+                        webBatchRunning = false;
+                        completedWebBatch = null;
+                        finishRunningTask('✨ 开始扫描与测试');
+                        showDCSelection(dcList);
+                    }
                     isStoppingTask = false;
                     if (String(msg.data || '').includes('已有任务正在运行')) {
                         if (officialAutoSpeedPending && officialAutoStage === 'test') {
@@ -6666,6 +6880,14 @@
                     if (isStoppingTask) {
                         resetStoppedTaskUI('已手动终止');
                         log('任务已手动终止');
+                        break;
+                    }
+                    if (webBatchRunning) {
+                        webBatchRunning = false;
+                        finishRunningTask('✨ 开始扫描与测试');
+                        renderAllTestResults();
+                        showDCSelection(dcList);
+                        // Task 3 can publish the same-session completedWebBatch.id here.
                         break;
                     }
                     if (officialBatchSpeedRunning) {

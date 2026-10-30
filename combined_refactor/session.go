@@ -102,6 +102,7 @@ func (s *appSession) startTaskNamed(label string, mode string, params map[string
 		s.sendWSMessage("error", "已有任务正在运行，请等待完成后再试")
 		return
 	}
+	s.sendWSMessage("web_batch_invalidated", nil)
 	safeGo("task", s, func() {
 		defer cancel()
 		defer func() {
@@ -160,9 +161,12 @@ func (s *appSession) shouldCancelOnDisconnect() bool {
 func (s *appSession) cancelTask(withLog bool) {
 	s.taskMutex.Lock()
 	cancel := s.taskCancel
+	if cancel != nil {
+		s.webBatch = nil
+		cancel()
+	}
 	s.taskMutex.Unlock()
 	if cancel != nil {
-		cancel()
 		if withLog {
 			s.markBackgroundStopping()
 			s.sendWSMessage("log", "已发送强制终止信号，正在清理当前任务...")
@@ -194,6 +198,7 @@ func (s *appSession) beginTask(cancel context.CancelFunc, label string, mode str
 		return false
 	}
 	s.isTaskRunning = true
+	s.webBatch = nil
 	s.taskCancel = cancel
 	s.backgroundTask = false
 	now := time.Now()
@@ -279,6 +284,87 @@ func (s *appSession) updateBackgroundSnapshotFromMessage(msgType string, data in
 
 func (s *appSession) applyBackgroundMessageLocked(msgType string, data interface{}) {
 	switch msgType {
+	case "web_batch_started":
+		batch, ok := data.(webBatchSnapshot)
+		if !ok {
+			return
+		}
+		s.backgroundSnapshot.WebBatchStatus = "running"
+		s.backgroundSnapshot.ScanTotal = batch.CandidateCount
+		s.backgroundSnapshot.DCCount = len(batch.Policy.Datacenters)
+		s.backgroundSnapshot.DCInfo = strings.Join(batch.Policy.Datacenters, ", ")
+		message := fmt.Sprintf("多中心候选 %d，未发现: %s", batch.CandidateCount, strings.Join(batch.MissingDatacenters, ", "))
+		s.updateProgressSnapshotLocked("详细测试中", 0, batch.CandidateCount, message)
+	case "web_batch_progress":
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return
+		}
+		current, total := asInt(m["current"]), asInt(m["total"])
+		phase := "详细测试中"
+		if m["phase"] == "speed" {
+			phase = "测速中"
+			s.backgroundSnapshot.SpeedTotal = total
+			s.backgroundSnapshot.SpeedQualified = asInt(m["qualified"])
+		} else {
+			s.backgroundSnapshot.ScanTotal = total
+			s.backgroundSnapshot.ScanFailed = max(current-s.backgroundSnapshot.ScanSuccess, 0)
+		}
+		s.updateProgressSnapshotLocked(phase, current, total, phase)
+	case "web_batch_result":
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return
+		}
+		result, ok := m["result"].(TestResult)
+		if !ok {
+			return
+		}
+		if result.Speed == "" {
+			s.backgroundSnapshot.TestCount++
+			s.backgroundSnapshot.ScanSuccess++
+		} else {
+			s.backgroundSnapshot.SpeedCount++
+			if result.SpeedMeasured {
+				s.backgroundSnapshot.SpeedSuccess++
+			} else {
+				s.backgroundSnapshot.SpeedFailed++
+			}
+			if qualified, _ := m["qualified"].(bool); qualified {
+				s.backgroundSnapshot.SpeedQualified++
+			}
+		}
+	case "web_batch_complete":
+		batch, ok := data.(webBatchSnapshot)
+		if !ok {
+			return
+		}
+		s.backgroundSnapshot.WebBatchStatus = "completed"
+		s.backgroundSnapshot.ScanTotal = batch.CandidateCount
+		s.backgroundSnapshot.ScanSuccess = batch.MeasuredCount
+		s.backgroundSnapshot.ScanFailed = max(batch.CandidateCount-batch.MeasuredCount, 0)
+		s.backgroundSnapshot.TestCount = batch.MeasuredCount
+		s.backgroundSnapshot.SpeedCount = batch.MeasuredCount
+		s.backgroundSnapshot.SpeedTotal = batch.MeasuredCount
+		s.backgroundSnapshot.SpeedQualified = batch.QualifiedCount
+		s.backgroundSnapshot.ResultCount = len(batch.Results)
+		message := fmt.Sprintf("已测 %d，达标 %d，最终 %d/%d，未发现: %s", batch.MeasuredCount, batch.QualifiedCount, len(batch.Results), batch.Policy.Limit, strings.Join(batch.MissingDatacenters, ", "))
+		if len(batch.Results) == 0 {
+			message += "；无结果，不可发布"
+		}
+		s.updateProgressSnapshotLocked("多中心测试完成", batch.MeasuredCount, batch.MeasuredCount, message)
+		s.backgroundSnapshot.Percent = 100
+	case "web_batch_failed":
+		m, ok := data.(map[string]interface{})
+		if !ok {
+			return
+		}
+		s.backgroundSnapshot.WebBatchStatus = fmt.Sprint(m["status"])
+		s.backgroundSnapshot.Phase = "测试失败"
+		if m["status"] == "cancelled" {
+			s.backgroundSnapshot.Phase = "已停止"
+		}
+		s.backgroundSnapshot.Message = fmt.Sprint(m["message"]) + "；不可发布本次结果"
 	case "log":
 		s.backgroundSnapshot.Message = fmt.Sprint(data)
 	case "scan_progress", "test_progress":
@@ -373,10 +459,21 @@ func (s *appSession) applyBackgroundMessageLocked(msgType string, data interface
 			s.nsbMutex.Unlock()
 		}
 	case "task_stopped":
+		if s.backgroundSnapshot.WebBatchStatus == "cancelled" {
+			s.backgroundSnapshot.Running = false
+			return
+		}
+		if s.backgroundSnapshot.WebBatchStatus != "" {
+			s.backgroundSnapshot.WebBatchStatus = "cancelled"
+		}
 		s.backgroundSnapshot.Phase = "已停止"
 		s.backgroundSnapshot.Message = "任务已停止"
 		s.backgroundSnapshot.Running = false
 	case "task_complete":
+		if s.backgroundSnapshot.WebBatchStatus != "" {
+			s.backgroundSnapshot.Running = false
+			return
+		}
 		s.backgroundSnapshot.Phase = "完成"
 		s.backgroundSnapshot.Message = "任务完成"
 		s.backgroundSnapshot.Running = false

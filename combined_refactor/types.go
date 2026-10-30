@@ -241,6 +241,8 @@ type appSession struct {
 	taskCancel           context.CancelFunc
 	backgroundTask       bool
 	backgroundSnapshot   backgroundTaskSnapshot
+	webBatch             *webBatchSnapshot
+	webBatchSequence     uint64
 	wsClosed             bool
 	scanMutex            sync.Mutex
 	scanResults          []ScanResult
@@ -257,6 +259,7 @@ type appSession struct {
 }
 
 type backgroundTaskSnapshot struct {
+	WebBatchStatus string                 `json:"webBatchStatus,omitempty"`
 	Label          string                 `json:"label"`
 	Mode           string                 `json:"mode"`
 	Phase          string                 `json:"phase"`
