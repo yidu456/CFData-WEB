@@ -432,7 +432,11 @@ func resolveCLIExportConfig(cfg *cliConfig) error {
 	flag.Visit(func(f *flag.Flag) { provided[f.Name] = true })
 	configPath := cfg.export.ConfigFile
 	if configPath == "" {
-		configPath = defaultCLIConfigPath()
+		var err error
+		configPath, err = defaultCLIConfigPath()
+		if err != nil {
+			return err
+		}
 	}
 	fileCfg, created, err := loadOrCreateCLIConfig(configPath)
 	if err != nil {
@@ -947,12 +951,8 @@ func applyCLIFileConfig(cfg *cliConfig, fileCfg cliFileConfig, provided map[stri
 	}
 }
 
-func defaultCLIConfigPath() string {
-	exe, err := os.Executable()
-	if err != nil || exe == "" {
-		return "cfdata-config.json"
-	}
-	return filepath.Join(filepath.Dir(exe), "cfdata-config.json")
+func defaultCLIConfigPath() (string, error) {
+	return defaultDataPath("cfdata-config.json")
 }
 
 func expandHome(path string) string {
@@ -1678,6 +1678,7 @@ func writeCLIExportAndMaybeUpload(cfg *cliConfig, rows []cliResultRow, mode stri
 		return err
 	}
 	filename := cfg.outFile
+	defaultOutput := strings.TrimSpace(filename) == "" || strings.TrimSpace(filename) == "cfdata-results"
 	if strings.TrimSpace(filename) == "" {
 		filename = "cfdata-results." + cfg.export.Format
 	}
@@ -1685,6 +1686,12 @@ func writeCLIExportAndMaybeUpload(cfg *cliConfig, rows []cliResultRow, mode stri
 		filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ext
 	}
 	filename = safeFilename(filename)
+	if defaultOutput {
+		filename, err = defaultDataPath(filename)
+		if err != nil {
+			return err
+		}
+	}
 	file, err := os.Create(filename)
 	if err != nil {
 		return err

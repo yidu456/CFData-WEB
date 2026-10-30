@@ -123,7 +123,11 @@ func runCompactIPv4Task(ctx context.Context, session *appSession) {
 
 	subnets := sortedCompactSubnets(validSubnets)
 	compactContent := strings.Join(subnets, "\n") + "\n"
-	if err := atomicWriteFile(compactIPv4File, []byte(compactContent), 0644); err != nil {
+	path, err := defaultDataPath(compactIPv4File)
+	if err == nil {
+		err = atomicWriteFile(path, []byte(compactContent), 0644)
+	}
+	if err != nil {
 		session.sendWSMessage("error", "写入精简后的 IPv4 地址库失败: "+err.Error())
 		return
 	}

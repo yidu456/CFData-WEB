@@ -303,6 +303,28 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 			s.taskMutex.Unlock()
 			reply(store.status())
 		}
+	case "huawei_legacy_migrate", "huawei_legacy_cleanup":
+		if !req.Confirmed {
+			fail(errors.New("explicit legacy migration or cleanup confirmation required"))
+			return true
+		}
+		var err error
+		if action == "huawei_legacy_migrate" {
+			err = store.migrateLegacy()
+		} else {
+			err = store.cleanupLegacy()
+		}
+		if err != nil {
+			fail(err)
+			return true
+		}
+		if action == "huawei_legacy_migrate" {
+			s.taskMutex.Lock()
+			s.dnsZones, s.dnsRecords, s.dnsTarget, s.dnsPreview = nil, nil, nil, nil
+			s.webPublishOptions.DNS = false
+			s.taskMutex.Unlock()
+		}
+		reply(store.status())
 	case "web_publish_options":
 		req.GitHubConfig.Content = ""
 		req.GitHubConfig.beforeMutation = nil

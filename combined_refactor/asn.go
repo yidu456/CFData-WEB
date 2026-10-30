@@ -53,7 +53,12 @@ func getASNReader() (*maxminddb.Reader, error) {
 		return asnLookupState.reader, asnLookupState.err
 	}
 	asnLookupState.loaded = true
-	if _, err := os.Stat(asnDBFile); os.IsNotExist(err) {
+	path, err := defaultDataPath(asnDBFile)
+	if err != nil {
+		asnLookupState.err = err
+		return nil, err
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		sendLog("本地 GeoLite2-ASN.mmdb 不存在，正在下载...")
 		content, err := getURLBytesViaProxy(context.Background(), asnDBURL)
 		if err != nil {
@@ -61,13 +66,13 @@ func getASNReader() (*maxminddb.Reader, error) {
 			sendLog("下载 ASN 数据库失败: " + err.Error())
 			return nil, err
 		}
-		if err := atomicWriteFile(asnDBFile, content, 0644); err != nil {
+		if err := atomicWriteFile(path, content, 0644); err != nil {
 			asnLookupState.err = err
 			sendLog("保存 ASN 数据库失败: " + err.Error())
 			return nil, err
 		}
 	}
-	reader, err := maxminddb.Open(asnDBFile)
+	reader, err := maxminddb.Open(path)
 	if err != nil {
 		asnLookupState.err = err
 		sendLog("打开 ASN 数据库失败: " + err.Error())

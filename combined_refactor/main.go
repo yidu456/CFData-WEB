@@ -207,14 +207,18 @@ func main() {
 	webSessionTTL = time.Duration(webSessionMinutes) * time.Minute
 
 	if !cliCfg.enabled {
-		cfgPath := defaultCLIConfigPath()
+		cfgPath, pathErr := defaultCLIConfigPath()
 		initHuaweiPrivateConfig()
-		if _, created, err := loadOrCreateCLIConfig(cfgPath); err != nil && !errors.Is(err, errCLIConfigCreated) {
+		if pathErr != nil {
+			fmt.Printf("[config] %v\n", pathErr)
+		} else if _, created, err := loadOrCreateCLIConfig(cfgPath); err != nil && !errors.Is(err, errCLIConfigCreated) {
 			fmt.Printf("[config] 加载配置文件失败: %v\n", err)
 		} else if created {
 			fmt.Printf("[config] 已生成配置文件模板: %s\n", cfgPath)
 		}
-		applyManagementProxyFromConfigFile(cfgPath)
+		if pathErr == nil {
+			applyManagementProxyFromConfigFile(cfgPath)
+		}
 	}
 	initLocations()
 	if cliCfg.enabled {
@@ -289,7 +293,11 @@ func main() {
 	fmt.Printf("调试模式: %v\n", debugMode)
 	if debugMode {
 		fmt.Printf("调试等级: %s\n", normalizeDebugLevel(debugLevel))
-		fmt.Printf("调试日志: %s\n", defaultDebugLogPath())
+		if path, err := defaultDebugLogPath(); err == nil {
+			fmt.Printf("调试日志: %s\n", path)
+		} else {
+			fmt.Printf("[debug] %v\n", err)
+		}
 	}
 	fmt.Printf("服务启动于 %s\n", displayURL)
 	fmt.Printf("服务启动成功，复制 %s 到浏览器打开\n", displayURL)

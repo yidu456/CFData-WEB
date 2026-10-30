@@ -193,9 +193,14 @@ func boolChoiceIndex(value bool) int {
 }
 
 func runCLIMenu(cfg *cliConfig) {
-	configPath := defaultCLIConfigPath()
-	if strings.TrimSpace(cfg.export.ConfigFile) != "" {
-		configPath = cfg.export.ConfigFile
+	configPath := cfg.export.ConfigFile
+	if strings.TrimSpace(configPath) == "" {
+		var err error
+		configPath, err = defaultCLIConfigPath()
+		if err != nil {
+			fmt.Printf("[config] %v\n", err)
+			return
+		}
 	}
 	fileCfg, created, err := loadOrCreateCLIConfig(configPath)
 	if err != nil {

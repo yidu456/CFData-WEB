@@ -646,7 +646,12 @@ done:
 func runNSBTask(ctx context.Context, session *appSession, fileName, fileContent, outFile string, maxThreads, fallbackPort, speedTest int, speedURL string, enableTLS bool, delay int, resultLimit int, targetDC string, speedMin float64, speedLimit int, compact bool, scanMode string, reallinkHost string) {
 	session.sendWSMessage("log", fmt.Sprintf("开始非标优选：%s", fileName))
 
-	tmpFile, err := os.CreateTemp(".", "cfdata-nsb-*.txt")
+	dir, err := programDataDir()
+	if err != nil {
+		session.sendWSMessage("error", "无法创建临时文件: "+err.Error())
+		return
+	}
+	tmpFile, err := os.CreateTemp(dir, "cfdata-nsb-*.txt")
 	if err != nil {
 		session.sendWSMessage("error", "无法创建临时文件: "+err.Error())
 		return
@@ -1363,7 +1368,15 @@ func scanModeLabel(scanMode string) string {
 }
 
 func writeNSBCSV(outFile string, results []iptestResult, speedTest int, compact bool, scanMode string) error {
+	defaultOutput := strings.TrimSpace(outFile) == "" || strings.TrimSpace(outFile) == "ip.csv" || strings.TrimSpace(outFile) == "cfdata-results"
 	outFile = safeFilename(outFile)
+	if defaultOutput {
+		var err error
+		outFile, err = defaultDataPath(outFile)
+		if err != nil {
+			return err
+		}
+	}
 	file, err := os.Create(outFile)
 	if err != nil {
 		return err

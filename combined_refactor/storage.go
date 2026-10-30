@@ -24,11 +24,14 @@ func configureHTTPClients() {
 }
 
 func initLocations() {
-	filename := "locations.json"
+	filename, err := defaultDataPath("locations.json")
+	if err != nil {
+		sendLog("获取位置信息失败: " + err.Error())
+		return
+	}
 	url := "https://www.baipiao.eu.org/cloudflare/locations"
 	var locations []location
 	var body []byte
-	var err error
 
 	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		sendLog("本地 locations.json 不存在，正在从服务器下载...")
@@ -111,7 +114,11 @@ func resetAllConfigFiles(session *appSession) {
 	failed := []string{}
 
 	for _, filename := range files {
-		if err := os.Remove(filename); err == nil {
+		path, err := defaultDataPath(filename)
+		if err == nil {
+			err = os.Remove(path)
+		}
+		if err == nil {
 			deleted = append(deleted, filename)
 			continue
 		} else if os.IsNotExist(err) {
@@ -138,13 +145,18 @@ func resetAllConfigFiles(session *appSession) {
 }
 
 func getIPListContent(filename, apiURL string) (string, error) {
+	path, err := defaultDataPath(filename)
+	if err != nil {
+		return "", err
+	}
+	filename = path
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		content, err := getURLContentViaProxy(context.Background(), apiURL)
 		if err != nil {
 			return "", err
 		}
 		if err := saveToFile(filename, content); err != nil {
-			fmt.Println("保存 IP 列表缓存失败:", err)
+			return "", fmt.Errorf("保存 IP 列表缓存失败: %w", err)
 		}
 		return content, nil
 	}

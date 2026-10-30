@@ -47,15 +47,19 @@ type huaweiConfigRequest struct {
 }
 
 type huaweiConfigStatus struct {
-	MaskedAK               string   `json:"maskedAK"`
-	HasSecret              bool     `json:"hasSecret"`
-	Region                 string   `json:"region"`
-	ProjectID              string   `json:"projectId"`
-	Persisted              bool     `json:"persisted"`
-	EncryptedSaveSupported bool     `json:"encryptedSaveSupported"`
-	PrivatePath            string   `json:"privatePath"`
-	PrivateFileStatus      string   `json:"privateFileStatus"`
-	Regions                []string `json:"regions"`
+	MaskedAK                 string   `json:"maskedAK"`
+	HasSecret                bool     `json:"hasSecret"`
+	Region                   string   `json:"region"`
+	ProjectID                string   `json:"projectId"`
+	Persisted                bool     `json:"persisted"`
+	EncryptedSaveSupported   bool     `json:"encryptedSaveSupported"`
+	PrivatePath              string   `json:"privatePath"`
+	PrivateFileStatus        string   `json:"privateFileStatus"`
+	LegacyPrivatePath        string   `json:"legacyPrivatePath"`
+	LegacyFileStatus         string   `json:"legacyFileStatus"`
+	LegacyMigrationSupported bool     `json:"legacyMigrationSupported"`
+	LegacyCleanupReady       bool     `json:"legacyCleanupReady"`
+	Regions                  []string `json:"regions"`
 }
 
 type huaweiZone struct {
@@ -91,6 +95,8 @@ type huaweiDNSStore struct {
 	savedConfig       huaweiConfigRequest
 	privateFileStatus string
 	path              string
+	legacyPath        string
+	legacyMigration   *huaweiMigrationReceipt
 	transport         http.RoundTripper
 }
 
@@ -148,24 +154,17 @@ func (s *huaweiDNSStore) configure(c huaweiConfigRequest) error {
 func (s *huaweiDNSStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	raw, err := os.ReadFile(s.path)
+	c, _, _, err := readHuaweiPrivateConfig(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		s.privateFileStatus = "absent"
 		return nil
 	}
 	if err != nil {
 		s.privateFileStatus = "unavailable"
+		if privatePathStatus(s.path) == "available" {
+			s.privateFileStatus = "invalid"
+		}
 		return errors.New("private configuration read failed")
-	}
-	raw, err = unprotectHuaweiPrivate(raw)
-	if err != nil {
-		s.privateFileStatus = "invalid"
-		return errors.New("private configuration decryption failed")
-	}
-	var c huaweiConfigRequest
-	if json.Unmarshal(raw, &c) != nil || validateHuaweiConfig(c) != nil {
-		s.privateFileStatus = "invalid"
-		return errors.New("invalid private configuration")
 	}
 	s.config = c
 	s.revision++
@@ -182,7 +181,9 @@ func (s *huaweiDNSStore) status() huaweiConfigStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	fileStatus := s.privateFileStatus
-	if info, err := os.Stat(s.path); errors.Is(err, os.ErrNotExist) || s.path == "" {
+	if s.path == "" {
+		fileStatus = "unavailable"
+	} else if info, err := os.Stat(s.path); errors.Is(err, os.ErrNotExist) {
 		fileStatus = "absent"
 	} else if err != nil || !info.Mode().IsRegular() {
 		fileStatus = "unavailable"
@@ -192,6 +193,10 @@ func (s *huaweiDNSStore) status() huaweiConfigStatus {
 	current := s.config
 	current.Persist = false
 	status := huaweiConfigStatus{HasSecret: s.config.SK != "", Region: s.config.Region, ProjectID: s.config.ProjectID, Persisted: fileStatus == "encrypted" && current == s.savedConfig, EncryptedSaveSupported: huaweiPrivateEncryptionSupported && s.path != "", PrivatePath: s.path, PrivateFileStatus: fileStatus, Regions: []string{}}
+	status.LegacyPrivatePath = s.legacyPath
+	status.LegacyFileStatus = privatePathStatus(s.legacyPath)
+	status.LegacyMigrationSupported = huaweiPrivateEncryptionSupported && s.path != "" && s.legacyPath != "" && fileStatus == "absent" && status.LegacyFileStatus == "available"
+	status.LegacyCleanupReady = s.legacyUnchangedLocked()
 	if s.config.AK != "" {
 		status.MaskedAK = "configured"
 		if len(s.config.AK) > 8 {
@@ -207,16 +212,25 @@ func (s *huaweiDNSStore) status() huaweiConfigStatus {
 
 func initHuaweiPrivateConfig() {
 	dir, err := os.UserConfigDir()
+	if err == nil {
+		webHuaweiDNS.legacyPath = filepath.Join(dir, "cfdata-web", "huawei-dns.private")
+	}
+	webHuaweiDNS.path, err = defaultDataPath("huawei-dns.private")
 	if err != nil {
+		webHuaweiDNS.privateFileStatus = "unavailable"
+		fmt.Println("[Huawei DNS] executable data directory unavailable; use memory-only Apply")
 		return
 	}
-	webHuaweiDNS.path = filepath.Join(dir, "cfdata-web", "huawei-dns.private")
 	if err := webHuaweiDNS.load(); err != nil {
 		fmt.Println("[Huawei DNS] private configuration unavailable; configure again in Web panel")
 	}
 }
 
 func saveHuaweiPrivate(path string, raw []byte) error {
+	return writeHuaweiPrivate(path, raw, true)
+}
+
+func writeHuaweiPrivate(path string, raw []byte, replace bool) error {
 	if path == "" {
 		return errors.New("private path unavailable")
 	}
@@ -226,9 +240,6 @@ func saveHuaweiPrivate(path string, raw []byte) error {
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
-	}
-	if err := os.Chmod(dir, 0700); err != nil {
 		return err
 	}
 	f, err := os.CreateTemp(dir, ".huawei-private-*")
@@ -249,6 +260,9 @@ func saveHuaweiPrivate(path string, raw []byte) error {
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if !replace {
+		return os.Link(name, path)
 	}
 	return os.Rename(name, path)
 }

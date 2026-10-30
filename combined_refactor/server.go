@@ -467,7 +467,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			status := map[string]interface{}{"configured": managementProxyConfigured(), "label": proxyStatusLabel(), "source": proxySourceLabel()}
-			saveErr := updateProxyInConfigFile(defaultCLIConfigPath(), managementProxyRaw)
+			cfgPath, saveErr := defaultCLIConfigPath()
+			if saveErr == nil {
+				saveErr = updateProxyInConfigFile(cfgPath, managementProxyRaw)
+			}
 			if saveErr != nil {
 				status["saved"] = false
 				status["message"] = "代理已生效但写入配置文件失败，重启后失效: " + saveErr.Error()
@@ -484,7 +487,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			session.sendWSMessage("proxy_updated", status)
 		},
 		"get_config": func(data json.RawMessage) {
-			cfgPath := defaultCLIConfigPath()
+			cfgPath, err := defaultCLIConfigPath()
+			if err != nil {
+				session.sendWSMessage("error", "读取配置文件失败: "+err.Error())
+				return
+			}
 			raw, err := os.ReadFile(cfgPath)
 			if err != nil {
 				session.sendWSMessage("error", "读取配置文件失败: "+err.Error())

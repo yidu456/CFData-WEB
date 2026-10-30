@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +98,11 @@ func appendDebugLogLine(line string) {
 	}
 	debugLogMutex.Lock()
 	defer debugLogMutex.Unlock()
-	path := defaultDebugLogPath()
+	path, err := defaultDebugLogPath()
+	if err != nil {
+		fmt.Printf("[debug-error] source=debug_log detail=%v\n", err)
+		return
+	}
 	rotateDebugLogIfNeeded(path)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -131,15 +134,8 @@ func rotateDebugLogIfNeeded(path string) {
 	_ = os.WriteFile(path, append([]byte(marker), buf...), 0644)
 }
 
-func defaultDebugLogPath() string {
-	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
-		return filepath.Join(cwd, debugLogFileName)
-	}
-	exe, err := os.Executable()
-	if err != nil || strings.TrimSpace(exe) == "" {
-		return debugLogFileName
-	}
-	return filepath.Join(filepath.Dir(exe), debugLogFileName)
+func defaultDebugLogPath() (string, error) {
+	return defaultDataPath(debugLogFileName)
 }
 
 type debugRoundTripper struct {
