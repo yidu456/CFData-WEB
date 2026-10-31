@@ -24,7 +24,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
     const page = await context.newPage();
     let socket, connections = 0, batchID = 0, resultCount = 10, holdBatch = false, previewError = false, previewChanged = true, failNextConfigRead = false, failNextConfigSave = false;
-    let encryptedSaveSupported = true, privateFileStatus = 'absent', appliedConfigSaved = false;
+    let encryptedSaveSupported = true, privateFileStatus = 'absent', appliedConfigSaved = false, legacyFileStatus = 'available', legacyMigrationSupported = true, legacyCleanupReady = false;
     const send = (type, data) => socket.send(JSON.stringify({ type, data }));
     const response = (action, data) => send('huawei_response', { action, data });
     await page.routeWebSocket('**/*', routed => {
@@ -61,8 +61,16 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
                 appliedConfigSaved = request.data.persist === true;
                 if (appliedConfigSaved) privateFileStatus = 'encrypted';
               }
-              response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: appliedConfigSaved, encryptedSaveSupported, privatePath: 'C:/Mock User/Config/cfdata-web/huawei-dns.private', privateFileStatus, regions: ['cn-north-4', 'cn-east-3'] });
+              response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: appliedConfigSaved, encryptedSaveSupported, privatePath: 'C:/Mock Program/CFData/huawei-dns.private', privateFileStatus, legacyPrivatePath: 'C:/Mock User/AppData/Roaming/cfdata-web/huawei-dns.private', legacyFileStatus, legacyMigrationSupported, legacyCleanupReady, regions: ['cn-north-4', 'cn-east-3'] });
             }
+            break;
+          case 'huawei_legacy_migrate':
+            legacyMigrationSupported = false; legacyCleanupReady = true; privateFileStatus = 'encrypted'; appliedConfigSaved = true;
+            response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: true, encryptedSaveSupported, privatePath: 'C:/Mock Program/CFData/huawei-dns.private', privateFileStatus, legacyPrivatePath: 'C:/Mock User/AppData/Roaming/cfdata-web/huawei-dns.private', legacyFileStatus, legacyMigrationSupported, legacyCleanupReady, regions: ['cn-north-4', 'cn-east-3'] });
+            break;
+          case 'huawei_legacy_cleanup':
+            legacyFileStatus = 'absent'; legacyCleanupReady = false;
+            response(request.type, { maskedAK: 'configured (ending 6789)', hasSecret: true, region: 'cn-north-4', projectId: '0123456789abcdef0123456789abcdef', persisted: true, encryptedSaveSupported, privatePath: 'C:/Mock Program/CFData/huawei-dns.private', privateFileStatus, legacyPrivatePath: 'C:/Mock User/AppData/Roaming/cfdata-web/huawei-dns.private', legacyFileStatus, legacyMigrationSupported, legacyCleanupReady, regions: ['cn-north-4', 'cn-east-3'] });
             break;
           case 'huawei_test': case 'huawei_zones': response(request.type, [{ id: 'zone1', name: 'example.com.' }]); break;
           case 'huawei_records': response(request.type, [target]); break;
@@ -414,12 +422,34 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
 
     await page.evaluate(() => openHuaweiPanel());
     await page.waitForFunction(() => document.getElementById('huaweiConfigStatus').textContent.includes('6789'));
+    assert.equal(await page.locator('#settingsMenu').getByText('华为云 DNS 配置与预览').count(), 0, 'old settings Huawei entry remains');
+    assert.equal(await page.locator('#resultHuaweiChoice').count(), 1, 'Huawei chooser entry must remain unique');
+    for (const id of ['huaweiConnectionSection', 'huaweiTargetSection', 'huaweiUpdateSection']) assert.equal(await page.locator(`#${id}`).count(), 1);
     assert.equal(await page.locator('#huaweiAK').inputValue(), '');
     assert.equal(await page.locator('#huaweiSK').inputValue(), '');
     assert.equal(await page.locator('#huaweiAK').evaluate(el => el === document.activeElement), true);
     assert.equal(await page.getByRole('button', { name: '应用配置（仅内存）', exact: true }).count(), 1);
     assert.equal(await page.getByRole('button', { name: '保存加密配置', exact: true }).count(), 1);
     assert.equal(await page.locator('#huaweiSaveEncrypted').isDisabled(), false);
+    assert.equal(await page.locator('#huaweiLegacyMigrate').isDisabled(), false);
+    const providerRequestsBeforeMigration = requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$/.test(r.type)).length;
+    await page.locator('#huaweiHelp summary').focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('#huaweiHelp').getAttribute('open'), '');
+    for (const link of page.locator('#huaweiHelp a').all ? await page.locator('#huaweiHelp a').all() : []) {
+      assert.equal(await link.getAttribute('target'), '_blank');
+      assert.equal(await link.getAttribute('rel'), 'noopener noreferrer');
+    }
+    await page.screenshot({ path: path.join(output, 'dns-help-desktop.png'), fullPage: true });
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#huaweiLegacyMigrate').click();
+    await page.waitForFunction(() => !document.getElementById('huaweiLegacyCleanup').disabled);
+    assert.equal(requests.filter(r => r.type === 'huawei_legacy_migrate').at(-1).data.confirmed, true);
+    assert.equal(requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$/.test(r.type)).length, providerRequestsBeforeMigration, 'legacy migration accessed provider');
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#huaweiLegacyCleanup').click();
+    await page.waitForFunction(() => document.getElementById('huaweiLegacyStatus').textContent.includes('旧文件不存在'));
+    assert.equal(requests.filter(r => r.type === 'huawei_legacy_cleanup').at(-1).data.confirmed, true);
     const cloudRequestsBeforeSave = requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$|upload|publish$/.test(r.type)).length;
     await page.locator('#huaweiAK').fill('MOCK_AK_PRIVATE_123456789');
     await page.locator('#huaweiSK').fill('MOCK_SK_PRIVATE_123456789');
@@ -458,6 +488,8 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('与上次加密保存一致'));
     await page.screenshot({ path: path.join(output, 'dns-encrypted-save-mobile.png') });
     assert.equal(await page.locator('#huaweiModalMask').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'encrypted-save path/status overflows mobile');
+    await page.locator('#huaweiHelp').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, 'dns-help-mobile.png') });
     await page.setViewportSize({ width: 1440, height: 1050 });
     assert.equal(requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$|upload|publish$/.test(r.type)).length, cloudRequestsBeforeSave, 'config Apply/Save performed a cloud operation');
     await page.evaluate(() => discoverHuaweiZones(true));

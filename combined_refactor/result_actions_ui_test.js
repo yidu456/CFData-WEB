@@ -11,7 +11,7 @@ function extract(name) {
 }
 const elements = {};
 let focused;
-for (const id of ['resultModalMask', 'resultModalTitle', 'resultFormat', 'resultFileName', 'resultIPTypeFilterField', 'resultIPTypeFilter', 'resultQualifiedFilterField', 'resultQualifiedFilter', 'resultExportChoice', 'resultGitHubChoice', 'resultEdgetunnelChoice', 'resultHuaweiChoice', 'resultBack', 'githubAccountSelect', 'settingsMenu', 'settingsToggle', 'huaweiModalMask', 'huaweiAK', 'huaweiSK', 'huaweiBack', 'huaweiConfigStatus', 'huaweiSaveEncrypted', 'huaweiSaveStatus', 'noticeCardMask', 'huaweiDNSStatus', 'huaweiConfirm', 'huaweiRegion', 'huaweiProjectID']) {
+for (const id of ['resultModalMask', 'resultModalTitle', 'resultFormat', 'resultFileName', 'resultIPTypeFilterField', 'resultIPTypeFilter', 'resultQualifiedFilterField', 'resultQualifiedFilter', 'resultExportChoice', 'resultGitHubChoice', 'resultEdgetunnelChoice', 'resultHuaweiChoice', 'resultBack', 'githubAccountSelect', 'settingsMenu', 'settingsToggle', 'huaweiModalMask', 'huaweiAK', 'huaweiSK', 'huaweiBack', 'huaweiConfigStatus', 'huaweiSaveEncrypted', 'huaweiSaveStatus', 'noticeCardMask', 'huaweiDiscoveryStatus', 'huaweiDNSStatus', 'huaweiConfirm', 'huaweiRegion', 'huaweiProjectID', 'huaweiPrivatePath', 'huaweiLegacyStatus', 'huaweiLegacyMigrate', 'huaweiLegacyCleanup']) {
   const classes = new Set();
   elements[id] = { value: '', style: {}, dataset: {}, textContent: '', focus() { focused = id; }, classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } };
 }
@@ -75,7 +75,4 @@ vm.runInContext('openResultModal("scan")', ctx);
 assert.equal(ctx.resultModalMode, 'nsb', 'legacy NSB entry must retain its own rows/format');
 assert.equal(elements.githubAccountSelect.value, '2');
 assert.equal(elements.resultIPTypeFilterField.style.display, '');
-vm.runInContext('closeResultModal();openHuaweiPanel();closeHuaweiPanel()', ctx);
-assert.equal(elements.huaweiBack.hidden, true, 'legacy settings entry must not acquire a chooser back path');
-assert.equal(focused, 'settingsToggle');
 console.log('Result destination chooser/back/config preservation and read-only navigation pass (offline)');

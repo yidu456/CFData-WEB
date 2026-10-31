@@ -9,7 +9,7 @@ function extract(name) {
   const end = html.indexOf('\n        function ', start + 1);
   return html.slice(start, end === -1 ? html.indexOf('</script>', start) : end);
 }
-const elements = Object.fromEntries(['huaweiAK','huaweiSK','huaweiRegion','huaweiProjectID','huaweiPersist','huaweiSaveEncrypted','huaweiSaveStatus','huaweiConfigStatus','huaweiDNSStatus','huaweiZone','huaweiRecord','huaweiTarget','huaweiPreview','huaweiConfirm','huaweiAuto','githubAutoSelected','githubRepo','githubToken','githubBranch','githubPath','githubMessage','resultFormat'].map(id=>[id,{value:'',checked:false,disabled:false,textContent:'',innerHTML:''}]));
+const elements = Object.fromEntries(['huaweiAK','huaweiSK','huaweiRegion','huaweiProjectID','huaweiPersist','huaweiSaveEncrypted','huaweiSaveStatus','huaweiConfigStatus','huaweiDiscoveryStatus','huaweiDNSStatus','huaweiZone','huaweiRecord','huaweiTarget','huaweiPreview','huaweiConfirm','huaweiAuto','huaweiPrivatePath','huaweiLegacyStatus','huaweiLegacyMigrate','huaweiLegacyCleanup','githubAutoSelected','githubRepo','githubToken','githubBranch','githubPath','githubMessage','resultFormat'].map(id=>[id,{value:'',checked:false,disabled:false,textContent:'',innerHTML:''}]));
 const sent = [];
 const notices = [];
 const ctx=vm.createContext({document:{getElementById:id=>elements[id]},wsSend:p=>{sent.push(p);return true;},showNoticeCard:p=>notices.push(p),completedWebBatch:{id:7,results:[{IP:'192.0.2.2'}]},huaweiPreviewToken:'',huaweiPreviewBatchID:0,confirm:()=>true,escapeHTML:s=>String(s).replaceAll('<','&lt;')});
