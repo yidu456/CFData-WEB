@@ -35,6 +35,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
         const request = JSON.parse(String(raw));
         requests.push(request);
         switch (request.type) {
+          case 'web_state_get': send('web_state_response', { action: request.type, requestId: request.data.requestId, ok: true, metadata: { revision: 0, privateFileStatus: 'absent', encryptedSaveSupported: true }, sections: {} }); break;
           case 'check_proxy_country': send('proxy_country_result', { cfCountry: 'SKIPPED', proxyWarning: false, geoCheckOK: true, skipGeoCheck: true }); break;
           case 'web_publish_options': response(request.type, { dns: request.data.dns, github: request.data.github }); break;
           case 'start_web_batch': {

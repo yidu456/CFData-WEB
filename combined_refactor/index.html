@@ -1676,7 +1676,7 @@
     </style>
     <script>
     (function(){
-        var t = localStorage.getItem('cfdata-theme') || 'auto';
+        var t = 'auto';
         var dark = t === 'dark';
         if (t === 'auto') {
             dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -1731,7 +1731,7 @@
 
         <div id="configMenu" class="settings-menu hidden">
             <div class="settings-title">💾 保存配置</div>
-            <button class="menu-btn" onclick="saveConfigToLS()">保存当前配置</button>
+            <button class="menu-btn" onclick="saveConfigToLS()">加密保存当前配置到程序目录</button>
 
             <div class="settings-title" style="margin-top:12px;">📂 加载配置</div>
             <button class="menu-btn" onclick="loadConfigFromLS()">加载保存配置</button>
@@ -1739,7 +1739,7 @@
             <div class="settings-title" style="margin-top:12px;">🔄 自动加载配置</div>
             <select id="configAutoLoad" onchange="saveAutoLoadPreference(this.value)" style="width:100%;">
                 <option value="off">关闭</option>
-                <option value="localStorage">localStorage</option>
+                <option value="backend">程序目录加密配置</option>
                 <option value="configFile">本地配置文件</option>
             </select>
 
@@ -1748,6 +1748,13 @@
 
             <div class="settings-title" style="margin-top:12px;">🗑️ 管理</div>
             <button class="danger-btn" onclick="deleteSavedConfig()">删除保存配置</button>
+            <div id="webStateStatus" class="upload-status" role="status" aria-live="polite">尚未读取加密存储；当前仅内存使用</div>
+            <details style="margin-top:8px;font-size:12px;">
+                <summary>旧浏览器数据迁移</summary>
+                <p>只在程序目录尚无 Web 保存数据时导入。导入不会启用自动上传或 DNS 更新。旧 token/密码密文与原访问地址绑定；地址改变时需重新输入。DPAPI 文件仅当前 Windows 用户可读，其他系统仅内存使用。</p>
+                <button class="menu-btn" onclick="importLegacyBrowserState()">明确导入此浏览器旧配置/账户</button>
+                <button class="danger-btn" id="webStateCleanup" onclick="confirmLegacyBrowserCleanup()" disabled>单独清理已成功导入且未变化的旧数据</button>
+            </details>
         </div>
 
         <div class="status-bar" id="status">正在连接服务器...</div>
@@ -2638,6 +2645,18 @@
         const githubTokenCryptoSalt = 'cfdata-github-token-v1';
         const edgetunnelAccountStorageKey = 'cfdata-edgetunnel-accounts';
         const edgetunnelSessionPasswords = new Map();
+        let webStateMemory = {};
+        let webStateRevision = 0;
+        let webStateLoaded = false;
+        let webStateDirty = new Set();
+        let webStatePending = new Map();
+        let webStateSequence = 0;
+        let webStateQueue = Promise.resolve();
+        let webStateMigrationReceipt = null;
+        let webStateMetadata = {};
+        let webStateGenerations = {};
+        let serverConfigLoadIntents = [];
+        let pendingSavedWebDCs = new Set();
 
         const LATENCY_COLORS = [
             { end: 50, color: '#1f8a3b' },
@@ -2704,7 +2723,6 @@
 
             if (theme === 'auto') {
                 setDark(prefersDark || androidDark);
-                localStorage.setItem('cfdata-theme', 'auto');
                 const autoBtn = document.getElementById('theme-auto');
                 const lightBtn = document.getElementById('theme-light');
                 const darkBtn = document.getElementById('theme-dark');
@@ -2715,7 +2733,6 @@
             }
 
             setDark(theme === 'dark');
-            localStorage.setItem('cfdata-theme', theme);
             const autoBtn = document.getElementById('theme-auto');
             const lightBtn = document.getElementById('theme-light');
             const darkBtn = document.getElementById('theme-dark');
@@ -2724,8 +2741,13 @@
             if (darkBtn) darkBtn.classList.toggle('active', theme === 'dark');
         }
 
-        function setTheme(theme) {
+        async function setTheme(theme) {
+            webStateMemory.theme = theme;
+            webStateDirty.add('theme');
+            webStateGenerations.theme = (webStateGenerations.theme || 0) + 1;
             applyTheme(theme);
+            try { await saveWebStateSections({ theme }); }
+            catch (_) { setWebStateStatus('颜色已在内存生效，未保存到加密文件'); }
         }
 
         function toggleSettingsMenu(event) {
@@ -2746,7 +2768,7 @@
             const menu = document.getElementById('configMenu');
             menu.classList.toggle('hidden');
             if (!menu.classList.contains('hidden')) {
-                const pref = localStorage.getItem('cfdata-autoload') || 'off';
+                const pref = webStateMemory.autoload || 'off';
                 document.getElementById('configAutoLoad').value = pref;
             }
         }
@@ -2768,7 +2790,7 @@
         });
 
         function initThemeFromStorage() {
-            const saved = localStorage.getItem('cfdata-theme') || 'auto';
+            const saved = webStateMemory.theme || 'auto';
             applyTheme(saved);
         }
 
@@ -2966,6 +2988,7 @@
                 return el ? el.value : 'off';
             }
             return {
+                selectedDatacenters: [...new Set([...selectedWebDCs, ...pendingSavedWebDCs])].sort(),
                 official: {
                     scanMode: selVal('officialScanMode'),
                     ipType: selVal('officialIpType'),
@@ -3001,7 +3024,7 @@
 
         function setValue(id, value) {
             const el = document.getElementById(id);
-            if (el === null || el === undefined || value === undefined || value === null || value === '') return;
+            if (el === null || el === undefined || value === undefined || value === null) return;
             el.value = value;
         }
 
@@ -3039,6 +3062,12 @@
             }
             if (o.speedUrl) applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', o.speedUrl);
             if (n.speedUrl) applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', n.speedUrl);
+            if (Array.isArray(config.selectedDatacenters)) {
+                pendingSavedWebDCs = new Set(config.selectedDatacenters.filter(dc => /^[A-Z]{3}$/.test(dc)));
+                selectedWebDCs = new Set([...pendingSavedWebDCs].filter(dc => dcList.some(item => item.DataCenter === dc)));
+                if (dcList.length) pendingSavedWebDCs.clear();
+                updateWebBatchSelection();
+            }
             syncOfficialSpeedConfigState();
             syncNSBSpeedConfigState();
             updateOfficialAutoSpeedControls();
@@ -3046,36 +3075,35 @@
             updateNSBCompactToggle();
         }
 
-        function saveConfigToLS() {
+        async function saveConfigToLS() {
             const config = readFormValues();
             try {
-                localStorage.setItem('cfdata-config', JSON.stringify(config));
-            } catch (e) {
-                showNoticeCard('保存配置失败: ' + (e.message || String(e)));
+                await saveWebStateSections({ config });
+            } catch (_) {
+                showNoticeCard('配置未保存；输入保留在内存，请检查加密存储状态后重试');
                 return;
             }
-            log('当前配置已保存到 localStorage');
+            log('当前配置已加密保存到程序目录');
         }
 
-        function loadConfigFromLS() {
-            let raw;
+        async function loadConfigFromLS() {
+            const generation = webStateGenerations.config || 0;
             try {
-                raw = localStorage.getItem('cfdata-config');
-            } catch (e) {
-                showNoticeCard('读取配置失败: ' + (e.message || String(e)));
+                const response = await webStateRequest('web_state_get', { content: true });
+                if (generation !== (webStateGenerations.config || 0) || (response.metadata?.revision || 0) < webStateRevision) return;
+                if (response.metadata.privateFileStatus === 'unavailable') throw new Error('unavailable');
+                if (!response.sections.config) return showNoticeCard('程序目录尚无保存的 Web 配置');
+                applyConfigValues(response.sections.config);
+                resetLoadedPublishOptions();
+                webStateMemory.config = response.sections.config;
+                webStateRevision = response.metadata.revision;
+                webStateDirty.delete('config');
+                setWebStateStatus('已明确加载加密配置；自动发布保持关闭');
+            } catch (_) {
+                showNoticeCard('读取加密配置失败；当前输入未改变');
                 return;
             }
-            if (!raw) {
-                showNoticeCard('localStorage 中未找到保存的配置');
-                return;
-            }
-            try {
-                applyConfigValues(JSON.parse(raw));
-            } catch (e) {
-                showNoticeCard('解析配置失败: ' + (e.message || String(e)));
-                return;
-            }
-            log('配置文件已从 localStorage 加载');
+            log('配置已从程序目录加密文件加载');
         }
 
         function mapCLIConfigToForm(cliCfg) {
@@ -3127,50 +3155,224 @@
             return result;
         }
 
-        function deleteSavedConfig() {
+        async function deleteSavedConfig() {
             if (!confirm('确定要删除保存的配置吗？')) return;
             try {
-                localStorage.removeItem('cfdata-config');
-                localStorage.removeItem('cfdata-autoload');
-            } catch (e) {
-                showNoticeCard('删除配置失败: ' + (e.message || String(e)));
+                await saveWebStateSections({ config: null, autoload: 'off' });
+            } catch (_) {
+                showNoticeCard('删除失败；原有加密配置和当前输入保留');
                 return;
             }
             showNoticeCard('保存的配置已删除');
         }
 
-        function saveAutoLoadPreference(value) {
+        async function saveAutoLoadPreference(value) {
+            webStateMemory.autoload = value;
+            webStateDirty.add('autoload');
+            webStateGenerations.autoload = (webStateGenerations.autoload || 0) + 1;
             try {
-                localStorage.setItem('cfdata-autoload', value);
-            } catch (e) {
-                showNoticeCard('保存自动加载偏好失败');
+                await saveWebStateSections({ autoload: value });
+            } catch (_) {
+                setWebStateStatus('自动加载偏好仅内存生效，未保存');
             }
         }
 
         function autoLoadConfig() {
-            let pref;
-            try {
-                pref = localStorage.getItem('cfdata-autoload');
-            } catch (e) {
+            if (webStateDirty.has('config') || isTaskRunning) return;
+            if (webStateMemory.autoload === 'backend' && webStateMemory.config) applyConfigValues(webStateMemory.config);
+            else if (webStateMemory.autoload === 'configFile' && wsSend({ type: 'get_config' })) serverConfigLoadIntents.push({ explicit: false });
+        }
+
+        function webStateError(code) {
+            const messages = {
+                unauthorized: '加密存储需要同源本机访问或有效登录',
+                invalid: '保存内容无效或过大', stale: '保存版本已变化；请重新读取后明确重试，当前输入保留',
+                exists: '程序目录已有 Web 保存数据，不能用旧浏览器数据覆盖',
+                unavailable: '加密存储不可用（仅 Windows 当前用户支持）；当前仍可内存使用',
+                save_failed: '加密文件保存失败；原有数据保留',
+            };
+            return new Error(messages[code] || '加密存储请求失败；当前仍可内存使用');
+        }
+
+        function setWebStateStatus(message) {
+            const el = document.getElementById('webStateStatus');
+            if (el) el.textContent = `${message}${webStateMetadata.privatePath ? '\n' + webStateMetadata.privatePath : ''}`;
+        }
+
+        function webStateRequest(action, data = {}) {
+            const requestId = `state-${++webStateSequence}`;
+            return new Promise((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    webStatePending.delete(requestId);
+                    reject(webStateError('unavailable'));
+                }, 8000);
+                webStatePending.set(requestId, { action, resolve, reject, timer });
+                if (!wsSend({ type: action, data: { ...data, requestId } })) {
+                    clearTimeout(timer);
+                    webStatePending.delete(requestId);
+                    reject(webStateError('unavailable'));
+                }
+            });
+        }
+
+        function handleWebStateMessage(msg) {
+            if (msg.type !== 'web_state_response') return false;
+            const response = msg.data || {};
+            const pending = webStatePending.get(response.requestId);
+            if (!pending || pending.action !== response.action) return true;
+            webStatePending.delete(response.requestId);
+            clearTimeout(pending.timer);
+            if (response.ok) pending.resolve(response);
+            else pending.reject(webStateError(response.code));
+            return true;
+        }
+
+        function saveWebStateSections(sections) {
+            const copy = JSON.parse(JSON.stringify(sections));
+            const generations = { ...webStateGenerations };
+            const accountBases = Object.fromEntries(['githubAccounts','edgetunnelAccounts'].filter(key => key in copy).map(key => [key, JSON.stringify(webStateMemory[key] || [])]));
+            const operation = webStateQueue.catch(() => {}).then(async () => {
+                if (!webStateLoaded) await loadWebState();
+                if (Object.entries(accountBases).some(([key, base]) => base !== JSON.stringify(webStateMemory[key] || []))) throw webStateError('stale');
+                const response = await webStateRequest('web_state_patch', { revision: webStateRevision, sections: copy });
+                webStateRevision = response.revision;
+                for (const [key, value] of Object.entries(copy)) {
+                    if ((webStateGenerations[key] || 0) === (generations[key] || 0)) {
+                        webStateMemory[key] = value;
+                        webStateDirty.delete(key);
+                    }
+                }
+                webStateMigrationReceipt = null;
+                const cleanup = document.getElementById('webStateCleanup');
+                if (cleanup) cleanup.disabled = true;
+                delete webStateMetadata.saveError;
+                setWebStateStatus(webStateDirty.size ? '已加密保存提交内容；后续修改尚未保存' : '已加密保存到程序目录');
+                return response;
+            });
+            webStateQueue = operation;
+            return operation.catch(error => { webStateMetadata.saveError = error.message; setWebStateStatus(error.message); throw error; });
+        }
+
+        async function loadWebState() {
+            const response = await webStateRequest('web_state_get', { content: true });
+            if ((response.metadata?.revision || 0) < webStateRevision) return;
+            webStateMetadata = response.metadata || {};
+            webStateRevision = webStateMetadata.revision || 0;
+            webStateLoaded = true;
+            if (webStateMetadata.privateFileStatus === 'unavailable') {
+                setWebStateStatus('加密文件无法读取；当前输入与内存数据保留');
                 return;
             }
-            if (!pref || pref === 'off') return;
+            for (const [key, value] of Object.entries(response.sections || {})) {
+                if (!webStateDirty.has(key)) webStateMemory[key] = value;
+            }
+            applyTheme(webStateMemory.theme || 'auto');
+            const autoload = document.getElementById('configAutoLoad');
+            if (autoload) autoload.value = webStateMemory.autoload || 'off';
+            renderGitHubAccounts();
+            renderEdgetunnelAccounts();
+            resetLoadedPublishOptions();
+            autoLoadConfig();
+            setWebStateStatus(webStateDirty.size ? '已读取加密数据；未保存修改保留在内存' : (webStateMetadata.encryptedSaveSupported ? '已读取加密存储；自动发布保持关闭' : '当前平台不支持加密保存；仅内存使用'));
+        }
+
+        function resetLoadedPublishOptions() {
+            for (const id of ['huaweiAuto', 'githubAutoSelected']) {
+                const el = document.getElementById(id);
+                if (el) el.checked = false;
+            }
+            for (const id of ['officialAutoUploadAccount', 'nsbAutoUploadAccount']) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            }
+        }
+
+        function markWebConfigDirty() {
+            webStateDirty.add('config');
+            webStateGenerations.config = (webStateGenerations.config || 0) + 1;
+            setWebStateStatus('当前配置修改尚未保存（仅内存）' + (webStateMetadata.saveError ? '；' + webStateMetadata.saveError : ''));
+        }
+
+        function legacyWebStateSnapshot() {
+            return Object.fromEntries(['cfdata-config', 'cfdata-theme', 'cfdata-autoload', githubAccountStorageKey, edgetunnelAccountStorageKey].map(key => [key, localStorage.getItem(key)]));
+        }
+
+        async function legacyWebStateDigest(source) {
+            const digest = await sha256Hex(JSON.stringify(source));
+            if (!digest) throw webStateError('unavailable');
+            return digest;
+        }
+
+        function sanitizeLegacyWebConfig(config) {
+            if (!config || typeof config !== 'object' || Array.isArray(config)) throw webStateError('invalid');
+            const out = {};
+            const fields = {
+                official: ['scanMode','ipType','port','threads','delay','speedMin','speedLimit','finalLimit','autoSpeed','targetDC','speedUrl'],
+                nsb: ['scanMode','threads','delay','resultLimit','fallbackPort','speedMin','speedLimit','speedTest','enableSpeed','targetDC','tls','compactView','outFile','speedUrl','sourceUrl','relinkPreset','relinkHost'],
+            };
+            for (const [group, keys] of Object.entries(fields)) {
+                if (!config[group]) continue;
+                if (typeof config[group] !== 'object' || Array.isArray(config[group])) throw webStateError('invalid');
+                out[group] = Object.fromEntries(keys.filter(key => config[group][key] !== undefined).map(key => [key, config[group][key]]));
+            }
+            if (config.selectedDatacenters !== undefined) out.selectedDatacenters = config.selectedDatacenters;
+            return out;
+        }
+
+        async function importLegacyBrowserState() {
             try {
-                if (pref === 'localStorage') {
-                    const raw = localStorage.getItem('cfdata-config');
-                    if (raw) {
-                        applyConfigValues(JSON.parse(raw));
-                    }
-                } else if (pref === 'configFile') {
-                    wsSend({ type: 'get_config' });
+                await webStateQueue.catch(() => {});
+                if (!webStateLoaded) await loadWebState();
+                if (webStateRevision !== 0) throw webStateError('exists');
+                const source = legacyWebStateSnapshot();
+                const sections = {};
+                if (source['cfdata-config'] !== null) sections.config = sanitizeLegacyWebConfig(JSON.parse(source['cfdata-config']));
+                if (source['cfdata-theme'] !== null) sections.theme = source['cfdata-theme'];
+                if (source['cfdata-autoload'] !== null) sections.autoload = source['cfdata-autoload'] === 'localStorage' ? 'backend' : source['cfdata-autoload'];
+                if (source[githubAccountStorageKey] !== null) sections.githubAccounts = JSON.parse(source[githubAccountStorageKey]);
+                if (source[edgetunnelAccountStorageKey] !== null) sections.edgetunnelAccounts = JSON.parse(source[edgetunnelAccountStorageKey]);
+                const sourceDigest = await legacyWebStateDigest(source);
+                const response = await webStateRequest('web_state_migrate', { revision: webStateRevision, sections, sourceDigest });
+                webStateRevision = response.revision;
+                webStateMigrationReceipt = { source, sourceDigest, migrationToken: response.migrationToken, revision: response.revision };
+                await loadWebState();
+                const cleanup = document.getElementById('webStateCleanup');
+                if (cleanup) cleanup.disabled = false;
+                showNoticeCard('旧浏览器数据已加密导入；旧来源保留。自动发布保持关闭。若访问地址改变导致账户无法解密，请重新输入 token/密码。');
+            } catch (_) {
+                showNoticeCard('旧浏览器数据导入失败；不覆盖已有保存数据，旧来源保留。请检查存储状态与旧数据格式。');
+            }
+        }
+
+        function confirmLegacyBrowserCleanup() {
+            showConfirmCard('仅清除此浏览器已成功导入且未变化的五项旧配置/账户键。与其他浏览器数据无关。确认清理？', cleanupLegacyBrowserState, '单独清理旧来源');
+        }
+
+        async function cleanupLegacyBrowserState() {
+            let receipt;
+            const removed = [];
+            try {
+                receipt = webStateMigrationReceipt;
+                if (!receipt || JSON.stringify(legacyWebStateSnapshot()) !== JSON.stringify(receipt.source)) throw webStateError('stale');
+                const response = await webStateRequest('web_state_legacy_cleanup_ready', { revision: receipt.revision, sourceDigest: receipt.sourceDigest, migrationToken: receipt.migrationToken });
+                if (!response.cleanupReady || JSON.stringify(legacyWebStateSnapshot()) !== JSON.stringify(receipt.source)) throw webStateError('stale');
+                for (const [key, value] of Object.entries(receipt.source)) {
+                    if (value !== null) { localStorage.removeItem(key); removed.push(key); }
                 }
-            } catch (e) {
-                console.error('[cfdata] autoLoadConfig failed:', e);
+                webStateMigrationReceipt = null;
+                document.getElementById('webStateCleanup').disabled = true;
+                showNoticeCard('已单独清理验证未变化的旧浏览器数据');
+            } catch (_) {
+                // Restore only old source values if the browser fails partway through cleanup.
+                try { for (const key of removed) localStorage.setItem(key, receipt.source[key]); }
+                catch (_) { return showNoticeCard('浏览器清理与恢复均失败；加密目标保留，请手动检查旧来源'); }
+                showNoticeCard('未清理旧来源：导入确认缺失、数据已变化或浏览器存储不可用');
             }
         }
 
         function loadConfigFromServer() {
-            wsSend({ type: 'get_config' });
+            const generation = webStateGenerations.config || 0;
+            if (wsSend({ type: 'get_config' })) serverConfigLoadIntents.push({ explicit: true, generation });
         }
 
         function wsSend(payload) {
@@ -3271,6 +3473,7 @@
                 updateStatus('已连接服务器', true);
                 log('已连接服务器');
                 initThemeFromStorage();
+                loadWebState().catch(error => setWebStateStatus(error.message));
             };
             ws.onmessage = (event) => {
                 try {
@@ -3282,6 +3485,13 @@
                 }
             };
             ws.onclose = () => {
+                serverConfigLoadIntents = [];
+                for (const pending of webStatePending.values()) {
+                    clearTimeout(pending.timer);
+                    pending.reject(webStateError('unavailable'));
+                }
+                webStatePending.clear();
+                resetLoadedPublishOptions();
                 resultHuaweiLoading = false;
                 completedWebBatch = null;
                 clearHuaweiPreview();
@@ -4669,6 +4879,10 @@
         function showDCSelection(list) {
             dcList = (list || []).filter(dc => /^[A-Z]{3}$/.test(dc.DataCenter));
             const available = new Set(dcList.map(dc => dc.DataCenter));
+            if (available.size && pendingSavedWebDCs.size) {
+                selectedWebDCs = new Set([...pendingSavedWebDCs].filter(dc => available.has(dc)));
+                pendingSavedWebDCs.clear();
+            }
             selectedWebDCs = new Set([...selectedWebDCs].filter(dc => available.has(dc)));
             const tbody = document.querySelector('#dcTable tbody');
             tbody.innerHTML = '';
@@ -4690,6 +4904,8 @@
         function toggleWebDatacenter(dc, checked) {
             if (isTaskRunning || !dcList.some(item => item.DataCenter === dc)) return;
             if (checked) selectedWebDCs.add(dc); else selectedWebDCs.delete(dc);
+            pendingSavedWebDCs.clear();
+            markWebConfigDirty();
             updateWebBatchSelection();
         }
 
@@ -5742,16 +5958,11 @@
         }
 
         function getGitHubAccounts() {
-            try {
-                const parsed = JSON.parse(localStorage.getItem(githubAccountStorageKey) || '[]');
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (_) {
-                return [];
-            }
+            return JSON.parse(JSON.stringify(webStateMemory.githubAccounts || []));
         }
 
         function saveGitHubAccounts(accounts) {
-            localStorage.setItem(githubAccountStorageKey, JSON.stringify(accounts));
+            return saveWebStateSections({ githubAccounts: accounts });
         }
 
         function renderGitHubAccounts() {
@@ -5778,7 +5989,7 @@
             delete current.token;
             current.tokenHash = current.tokenHash || await sha256Hex(token);
             current.tokenCipher = current.tokenCipher || await encryptGitHubToken(normalizeGitHubAccountKey(current), token);
-            saveGitHubAccounts(accounts);
+            await saveGitHubAccounts(accounts);
             githubSessionTokens.set(normalizeGitHubAccountKey(current), token);
             renderGitHubAccounts();
             return token;
@@ -5807,7 +6018,7 @@
                     if (token && document.getElementById('githubAccountSelect').value === String(idx)) {
                         document.getElementById('githubToken').value = token;
                     }
-                });
+                }).catch(() => showNoticeCard('旧 token 转换未保存；原账户保留，请检查加密存储后重试'));
             } else if (!sessionToken && account.tokenCipher) {
                 decryptStoredGitHubToken(account).then((token) => {
                     if (token) {
@@ -5827,15 +6038,16 @@
             document.getElementById('githubSaveToken').checked = false;
         }
 
-        function deleteSelectedGitHubAccount() {
+        async function deleteSelectedGitHubAccount() {
             const select = document.getElementById('githubAccountSelect');
             const idx = parseInt(select.value, 10);
             if (Number.isNaN(idx)) return;
             const accounts = getGitHubAccounts();
             const deleted = accounts[idx];
-            if (deleted) githubSessionTokens.delete(normalizeGitHubAccountKey(deleted));
             accounts.splice(idx, 1);
-            saveGitHubAccounts(accounts);
+            try { await saveGitHubAccounts(accounts); }
+            catch (_) { return showNoticeCard('删除账户失败；原账户与内存 token 保留'); }
+            if (deleted) githubSessionTokens.delete(normalizeGitHubAccountKey(deleted));
             renderGitHubAccounts();
         }
 
@@ -5885,7 +6097,6 @@
             const name = document.getElementById('githubAccountName').value.trim() || payload.repo;
             if (!name) return;
             const rememberToken = document.getElementById('githubSaveToken').checked;
-            const accounts = getGitHubAccounts();
             const tokenHash = await sha256Hex(payload.token);
             const next = {
                 name,
@@ -5896,32 +6107,27 @@
                 tokenHash,
             };
             if (rememberToken) {
-                githubSessionTokens.set(name, payload.token);
                 next.tokenCipher = await encryptGitHubToken(name, payload.token);
                 if (!next.tokenCipher) {
                     showNoticeCard('当前浏览器不支持 WebCrypto，无法安全保存 token；本次仍会上传，但不会持久保存 token');
                 }
-            } else {
-                githubSessionTokens.delete(name);
             }
+            const accounts = getGitHubAccounts();
             const existing = accounts.findIndex((a) => a.name === name);
             if (existing >= 0) accounts[existing] = next;
             else accounts.push(next);
-            saveGitHubAccounts(accounts);
+            await saveGitHubAccounts(accounts);
+            if (rememberToken) githubSessionTokens.set(name, payload.token);
+            else githubSessionTokens.delete(name);
             renderGitHubAccounts();
         }
 
         function getEdgetunnelAccounts() {
-            try {
-                const parsed = JSON.parse(localStorage.getItem(edgetunnelAccountStorageKey) || '[]');
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (_) {
-                return [];
-            }
+            return JSON.parse(JSON.stringify(webStateMemory.edgetunnelAccounts || []));
         }
 
         function saveEdgetunnelAccounts(accounts) {
-            localStorage.setItem(edgetunnelAccountStorageKey, JSON.stringify(accounts));
+            return saveWebStateSections({ edgetunnelAccounts: accounts });
         }
 
         function renderEdgetunnelAccounts() {
@@ -5972,15 +6178,16 @@
             document.getElementById('edgetunnelSavePassword').checked = false;
         }
 
-        function deleteSelectedEdgetunnelAccount() {
+        async function deleteSelectedEdgetunnelAccount() {
             const select = document.getElementById('edgetunnelAccountSelect');
             const idx = parseInt(select.value, 10);
             if (Number.isNaN(idx)) return;
             const accounts = getEdgetunnelAccounts();
             const deleted = accounts[idx];
-            if (deleted) edgetunnelSessionPasswords.delete(normalizeEdgetunnelAccountKey(deleted));
             accounts.splice(idx, 1);
-            saveEdgetunnelAccounts(accounts);
+            try { await saveEdgetunnelAccounts(accounts); }
+            catch (_) { return showNoticeCard('删除账户失败；原账户与内存密码保留'); }
+            if (deleted) edgetunnelSessionPasswords.delete(normalizeEdgetunnelAccountKey(deleted));
             renderEdgetunnelAccounts();
         }
 
@@ -6021,21 +6228,20 @@
             const password = document.getElementById('edgetunnelPassword').value.trim();
             const mode = document.getElementById('edgetunnelMode').value;
             const rememberPassword = document.getElementById('edgetunnelSavePassword').checked;
-            const accounts = getEdgetunnelAccounts();
             const next = { name, host, mode };
             if (rememberPassword && password) {
-                edgetunnelSessionPasswords.set(name, password);
                 next.passwordCipher = await encryptEdgetunnelPassword(name, password);
                 if (!next.passwordCipher) {
                     showNoticeCard('当前浏览器不支持 WebCrypto，无法安全保存密码；本次仍会上传，但不会持久保存密码');
                 }
-            } else {
-                edgetunnelSessionPasswords.delete(name);
             }
+            const accounts = getEdgetunnelAccounts();
             const existing = accounts.findIndex((a) => a.name === name);
             if (existing >= 0) accounts[existing] = next;
             else accounts.push(next);
-            saveEdgetunnelAccounts(accounts);
+            await saveEdgetunnelAccounts(accounts);
+            if (rememberPassword) edgetunnelSessionPasswords.set(name, password);
+            else edgetunnelSessionPasswords.delete(name);
             renderEdgetunnelAccounts();
         }
 
@@ -6717,7 +6923,8 @@
             const password = document.getElementById('edgetunnelPassword').value.trim();
             if (!host) return showNoticeCard('Host 不能为空');
             if (!password) return showNoticeCard('密码不能为空');
-            await saveCurrentEdgetunnelAccount();
+            try { await saveCurrentEdgetunnelAccount(); }
+            catch (_) { showNoticeCard('账户未加密保存；原账户保留，本次仅用当前输入上传'); }
             const format = document.getElementById('resultFormat').value;
             let content;
             try {
@@ -6796,7 +7003,8 @@
                 content,
             };
             if (!payload.token) return showNoticeCard('Token 不能为空');
-            await saveCurrentGitHubAccount(payload);
+            try { await saveCurrentGitHubAccount(payload); }
+            catch (_) { showNoticeCard('账户未加密保存；原账户保留，本次仅用当前输入上传'); }
             sendGitHubUpload(payload);
             log('已提交 GitHub 上传请求');
         }
@@ -6868,6 +7076,7 @@
         }
 
         function handleMessage(msg) {
+            if (handleWebStateMessage(msg)) return;
             if (handleHuaweiMessage(msg)) return;
             switch (msg.type) {
                 case 'web_batch_invalidated':
@@ -6889,12 +7098,13 @@
                     if (proxyWarningRequired) log(`代理检测警告：当前网络标签 ${cfCountry}`);
                     const speedDefault = msg.data.speedTestDefault || msg.data.speedTestURL || AUTO_SPEED_URL_VALUE;
                     defaultSpeedTestUrl = speedDefault || defaultSpeedTestUrl;
-                    applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', speedDefault);
-                    applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', speedDefault);
+                    if (!webStateLoaded && !webStateDirty.has('config')) {
+                        applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', speedDefault);
+                        applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', speedDefault);
+                    }
                     applySpeedURLStatus(msg.data.speedURLStatus);
                     applyProxyStatus(msg.data.proxyStatus);
                     renderVersionInfo(msg.data || {});
-                    autoLoadConfig();
                     break;
                 case 'speed_url_status':
                     applySpeedURLStatus(msg.data || {});
@@ -6916,8 +7126,13 @@
                     handleProxyCountryResult(msg.data || {});
                     break;
                 case 'config_data':
-                    applyConfigValues(mapCLIConfigToForm(msg.data));
-                    log('配置文件已从服务器加载');
+                    const configLoadIntent = serverConfigLoadIntents.length ? serverConfigLoadIntents.shift() : { explicit: false };
+                    if (configLoadIntent.explicit ? configLoadIntent.generation === (webStateGenerations.config || 0) : !webStateDirty.has('config')) {
+                        applyConfigValues(mapCLIConfigToForm(msg.data));
+                        resetLoadedPublishOptions();
+                        webStateDirty.delete('config');
+                        log('配置文件已从服务器加载');
+                    }
                     break;
                 case 'scan_progress':
                     if (isStoppingTask) break;
@@ -7168,6 +7383,7 @@
                     break;
 
                 case 'error':
+                    if (String(msg.data || '').includes('配置文件失败')) serverConfigLoadIntents.shift();
                     recordWebDebugError('server_error', msg.data);
                     if (webBatchRunning) {
                         webBatchRunning = false;
@@ -7353,8 +7569,15 @@
             initThemeFromStorage();
         });
 
+        for (const eventName of ['input', 'change']) {
+            document.addEventListener(eventName, event => {
+                const id = event.target.id || '';
+                if ((id.startsWith('official') || id.startsWith('nsb') || id === 'webBatchLimit') && !id.includes('AutoUpload') && !id.includes('FileInput')) markWebConfigDirty();
+            });
+        }
+
         function autoThemeBySystem() {
-            const saved = localStorage.getItem('cfdata-theme') || 'auto';
+            const saved = webStateMemory.theme || 'auto';
             if (saved === 'auto') {
                 applyTheme('auto');
             }

@@ -41,9 +41,9 @@ elements.dcSection = { style: {} };
 const state = vm.createContext({
   document: { getElementById: id => elements[id], querySelector: () => tbody, querySelectorAll: () => checkboxes },
   dcList: [{ DataCenter: 'NRT', City: 'Tokyo' }, { DataCenter: 'LHR', City: 'London' }, { DataCenter: 'GRU', City: 'Sao Paulo' }],
-  selectedWebDCs: new Set(['NRT', 'GRU']), testedDCs: new Set(), currentTestingDC: '',
+  selectedWebDCs: new Set(['NRT', 'GRU']), pendingSavedWebDCs: new Set(), markWebConfigDirty() {}, testedDCs: new Set(), currentTestingDC: '',
   isTaskRunning: false, webBatchRunning: false, currentMode: 'official',
-  saveWebPublishOptions: () => true, clearHuaweiPreview() {}, handleHuaweiMessage() { return false; },
+  saveWebPublishOptions: () => true, clearHuaweiPreview() {}, handleHuaweiMessage() { return false; }, handleWebStateMessage() { return false; },
   resolveSpeedTestUrl: () => 'speed.cloudflare.com/__down', getScanMode: () => 'tcping',
   escapeHTML: value => String(value ?? '').replaceAll('<', '&lt;'),
   getLatencyColorFactor: () => 1, getLatencyColor: () => 'inherit', updateBadge() {},

@@ -209,6 +209,7 @@ func main() {
 	if !cliCfg.enabled {
 		cfgPath, pathErr := defaultCLIConfigPath()
 		initHuaweiPrivateConfig()
+		initWebState()
 		if pathErr != nil {
 			fmt.Printf("[config] %v\n", pathErr)
 		} else if _, created, err := loadOrCreateCLIConfig(cfgPath); err != nil && !errors.Is(err, errCLIConfigCreated) {

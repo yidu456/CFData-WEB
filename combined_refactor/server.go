@@ -31,6 +31,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := &appSession{ws: ws}
+	// Private state replies stay on the initiating connection, not a followed task.
+	stateReply := session.sendWSMessageDirect
 	session.refreshWebPublicationAfterReconnect()
 	defer func() {
 		session.cancelWebPublication()
@@ -572,6 +574,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// Authority belongs to this immutable handshake, never the shared background session.
+		if handleWebStateAction(webState, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }, stateReply) {
+			continue
+		}
 		if handleHuaweiWebAction(r.Context(), session, webHuaweiDNS, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }) {
 			continue
 		}
