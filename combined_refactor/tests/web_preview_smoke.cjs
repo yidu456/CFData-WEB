@@ -450,6 +450,11 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.locator('#huaweiLegacyCleanup').click();
     await page.waitForFunction(() => document.getElementById('huaweiLegacyStatus').textContent.includes('旧文件不存在'));
     assert.equal(requests.filter(r => r.type === 'huawei_legacy_cleanup').at(-1).data.confirmed, true);
+    privateFileStatus = 'legacy-dpapi'; appliedConfigSaved = true;
+    await page.evaluate(() => loadHuaweiConfig());
+    await page.waitForFunction(() => document.getElementById('huaweiConfigStatus').textContent.includes('旧版 Windows 当前用户 DPAPI'));
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /明确保存.*转换/);
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /复制/);
     const cloudRequestsBeforeSave = requests.filter(r => /^huawei_(?:test|zones|records|select|preview|update)$|upload|publish$/.test(r.type)).length;
     await page.locator('#huaweiAK').fill('MOCK_AK_PRIVATE_123456789');
     await page.locator('#huaweiSK').fill('MOCK_SK_PRIVATE_123456789');
@@ -466,7 +471,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('Mock encrypted save failed'));
     assert.equal(await page.locator('#huaweiConfigStatus').textContent(), goodConfigStatus, 'failed save replaced last good status');
     assert.match(await page.locator('#huaweiSaveStatus').getAttribute('class'), /error/);
-    encryptedSaveSupported = false; privateFileStatus = 'legacy-plaintext'; appliedConfigSaved = false;
+    encryptedSaveSupported = false; privateFileStatus = 'legacy-plaintext'; appliedConfigSaved = false; // Backend failure fixture, not platform truth.
     await page.evaluate(() => loadHuaweiConfig());
     await page.waitForFunction(() => document.getElementById('huaweiSaveEncrypted').disabled);
     assert.match(await page.locator('#huaweiConfigStatus').textContent(), /旧版明文文件（上次加载验证，未加密）/);
@@ -482,7 +487,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.evaluate(() => loadHuaweiConfig());
     await page.waitForFunction(() => !document.getElementById('huaweiSaveEncrypted').disabled);
     assert.match(await page.locator('#huaweiConfigStatus').textContent(), /当前配置仅内存/);
-    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /上次保存\/加载验证为加密/);
+    assert.match(await page.locator('#huaweiConfigStatus').textContent(), /应用加密/);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#huaweiSaveEncrypted').click();
     await page.waitForFunction(() => document.getElementById('huaweiSaveStatus').textContent.includes('与上次加密保存一致'));
@@ -623,7 +628,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.equal(replayRequests.filter(r => r.type === 'github_upload').length, 1, 'genuine legacy replay lost manual upload compatibility');
     assert.ok([...requests, ...replayRequests].every(r => r.type !== 'start_task' && r.type !== 'edgetunnel_upload'), 'smoke unexpectedly started scan/edgetunnel flow');
     assert.deepEqual(errors, []);
-    console.log(`Offline Chrome smoke passed: chooser/dedicated views/back/focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, global top10/fewer/empty/cancel, explicit memory Apply/encrypted Save/no-cloud/blank keys/failure retention/unsupported legacy status/desktop keyboard/mobile save, DNS discovery/preview/confirmation/errors, independent statuses, reconnect and fresh legacy/provenance replay. Screenshots: ${output}`);
+    console.log(`Offline Chrome smoke passed: chooser/dedicated views/back/focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, global top10/fewer/empty/cancel, explicit memory Apply/application-encrypted Save/no-cloud/blank keys/failure retention/legacy DPAPI conversion/backend capability failure/desktop keyboard/mobile save, DNS discovery/preview/confirmation/errors, independent statuses, reconnect and fresh legacy/provenance replay. Screenshots: ${output}`);
   } finally {
     await browser.close();
   }

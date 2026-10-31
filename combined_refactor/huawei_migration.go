@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -27,36 +28,39 @@ func privatePathStatus(path string) string {
 	return "available"
 }
 
-func readHuaweiPrivateConfig(path string) (huaweiConfigRequest, []byte, os.FileInfo, error) {
+func readHuaweiPrivateConfig(path string) (huaweiConfigRequest, []byte, os.FileInfo, string, error) {
 	var c huaweiConfigRequest
 	info, err := os.Lstat(path)
 	if err != nil {
-		return c, nil, nil, err
+		return c, nil, nil, "", err
 	}
 	if !info.Mode().IsRegular() || info.Size() > 16384 {
-		return c, nil, nil, errors.New("invalid private configuration file")
+		return c, nil, nil, "", errors.New("invalid private configuration file")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return c, nil, nil, err
+		return c, nil, nil, "", err
 	}
 	defer f.Close()
 	opened, err := f.Stat()
 	if err != nil || !os.SameFile(info, opened) {
-		return c, nil, nil, errors.New("private configuration changed")
+		return c, nil, nil, "", errors.New("private configuration changed")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, 16385))
 	if err != nil || len(raw) > 16384 {
-		return c, nil, nil, errors.New("private configuration read failed")
+		return c, nil, nil, "", errors.New("private configuration read failed")
 	}
-	plain, err := unprotectHuaweiPrivate(raw)
+	plain, format, err := unprotectHuaweiPrivateFormat(raw)
+	if err != nil && legacyHuaweiPlaintextSupported && !bytes.HasPrefix(raw, []byte(privateEnvelopeMagic)) {
+		plain, format, err = raw, "legacy-plaintext", nil
+	}
 	if err != nil {
-		return c, nil, nil, errors.New("private configuration decryption failed")
+		return c, nil, nil, "", errors.New("private configuration decryption failed")
 	}
 	if json.Unmarshal(plain, &c) != nil || validateHuaweiConfig(c) != nil {
-		return c, nil, nil, errors.New("invalid private configuration")
+		return c, nil, nil, "", errors.New("invalid private configuration")
 	}
-	return c, raw, opened, nil
+	return c, raw, opened, format, nil
 }
 
 func (s *huaweiDNSStore) migrateLegacy() error {
@@ -68,7 +72,7 @@ func (s *huaweiDNSStore) migrateLegacy() error {
 	if s.path == "" || s.legacyPath == "" || privatePathStatus(s.path) != "absent" {
 		return errors.New("legacy migration requires an absent executable-local destination")
 	}
-	c, source, sourceInfo, err := readHuaweiPrivateConfig(s.legacyPath)
+	c, source, sourceInfo, _, err := readHuaweiPrivateConfig(s.legacyPath)
 	if err != nil {
 		return errors.New("legacy configuration could not be decrypted and validated")
 	}
@@ -80,7 +84,7 @@ func (s *huaweiDNSStore) migrateLegacy() error {
 	if err := writeHuaweiPrivate(s.path, raw, false); err != nil {
 		return errors.New("legacy migration save failed; source preserved")
 	}
-	loaded, destination, destinationInfo, err := readHuaweiPrivateConfig(s.path)
+	loaded, destination, destinationInfo, _, err := readHuaweiPrivateConfig(s.path)
 	if err != nil || loaded != c {
 		return errors.New("legacy migration verification failed; source preserved")
 	}
@@ -100,11 +104,11 @@ func (s *huaweiDNSStore) migrationFilesMatchLocked(r *huaweiMigrationReceipt) bo
 	if r == nil || !huaweiPrivateEncryptionSupported {
 		return false
 	}
-	_, source, sourceInfo, err := readHuaweiPrivateConfig(s.legacyPath)
+	_, source, sourceInfo, _, err := readHuaweiPrivateConfig(s.legacyPath)
 	if err != nil || !os.SameFile(r.sourceInfo, sourceInfo) || !r.sourceInfo.ModTime().Equal(sourceInfo.ModTime()) || sha256.Sum256(source) != r.source {
 		return false
 	}
-	_, destination, destinationInfo, err := readHuaweiPrivateConfig(s.path)
+	_, destination, destinationInfo, _, err := readHuaweiPrivateConfig(s.path)
 	return err == nil && os.SameFile(r.destinationInfo, destinationInfo) && r.destinationInfo.ModTime().Equal(destinationInfo.ModTime()) && sha256.Sum256(destination) == r.destination
 }
 

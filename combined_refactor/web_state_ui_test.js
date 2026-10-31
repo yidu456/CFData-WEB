@@ -16,7 +16,7 @@ function extractConst(name) {
 }
 function fixture() {
   const requests = [], notices = [], legacy = new Map();
-  let saved = {}, revision = 0, fail = '', hold = false, dropped = [], form = { official: { threads: '20' }, nsb: {} };
+  let saved = {}, revision = 0, fail = '', hold = false, dropped = [], privateFileStatus = '', form = { official: { threads: '20' }, nsb: {} };
   const elements = { webStateStatus: {}, configAutoLoad: {}, webStateCleanup: {} };
   const state = vm.createContext({
     webStateMemory: {}, webStateRevision: 0, webStateLoaded: false, webStateDirty: new Set(), webStatePending: new Map(), webStateSequence: 0,
@@ -39,7 +39,7 @@ function fixture() {
       const { requestId } = request.data;
       let response = { action: request.type, requestId, ok: !fail, code: fail };
       if (!fail) {
-        if (request.type === 'web_state_get') response = { ...response, metadata: { revision, privateFileStatus: revision ? 'encrypted' : 'absent', encryptedSaveSupported: true }, sections: saved };
+        if (request.type === 'web_state_get') response = { ...response, metadata: { revision, privateFileStatus: privateFileStatus || (revision ? 'encrypted' : 'absent'), encryptedSaveSupported: true }, sections: saved };
         if (request.type === 'web_state_patch' || request.type === 'web_state_migrate') {
           if (request.data.revision !== revision || (request.type === 'web_state_migrate' && revision)) response = { ...response, ok: false, code: 'stale' };
           else { saved = { ...saved, ...JSON.parse(JSON.stringify(request.data.sections)) }; response.revision = ++revision; response.migrationToken = 'mock-receipt'; }
@@ -52,7 +52,7 @@ function fixture() {
   });
   vm.runInContext(extractConst('githubTokenCryptoSalt'), state);
   for (const name of ['webStateError','setWebStateStatus','webStateRequest','handleWebStateMessage','saveWebStateSections','loadWebState','loadConfigFromLS','loadConfigFromServer','handleMessage','autoLoadConfig','getGitHubAccounts','saveGitHubAccounts','normalizeGitHubAccountKey','migrateLegacyGitHubToken','getGitHubTokenCryptoKey','encryptGitHubToken','getEdgetunnelAccounts','saveEdgetunnelAccounts','normalizeEdgetunnelAccountKey','deleteSelectedEdgetunnelAccount','legacyWebStateSnapshot','legacyWebStateDigest','sanitizeLegacyWebConfig','importLegacyBrowserState','cleanupLegacyBrowserState','sha256Hex','bytesToBase64']) vm.runInContext(extract(name), state);
-  return { state, requests, notices, legacy, dropped, form: value => { form = JSON.parse(JSON.stringify(value)); }, currentForm: () => form, saved: value => { saved = value; }, fail: v => { fail = v; }, hold: v => { hold = v; } };
+  return { state, requests, notices, legacy, dropped, form: value => { form = JSON.parse(JSON.stringify(value)); }, currentForm: () => form, saved: value => { saved = value; }, fail: v => { fail = v; }, hold: v => { hold = v; }, privateStatus: value => { privateFileStatus = value; } };
 }
 (async () => {
   const f = fixture();
@@ -60,6 +60,10 @@ function fixture() {
   await f.state.saveWebStateSections({ theme: 'dark' });
   await f.state.saveGitHubAccounts([{ repo: 'owner/repo', token: 'FIXTURE_PRIVATE_TOKEN' }]);
   assert.equal(f.state.webStateMemory.theme, 'dark');
+  assert.match(f.state.document.getElementById('webStateStatus').textContent, /应用加密/);
+  assert.match(f.state.document.getElementById('webStateStatus').textContent, /支持平台/);
+  assert.match(f.state.webStateError('unavailable').message, /当前后端/);
+  assert.doesNotMatch(f.state.webStateError('unavailable').message, /仅 Windows/);
   const copy = f.state.getGitHubAccounts(); copy[0].token = 'changed';
   assert.equal(f.state.getGitHubAccounts()[0].token, 'FIXTURE_PRIVATE_TOKEN', 'caller mutated saved accounts before acknowledgment');
   f.hold(true);
@@ -163,5 +167,21 @@ function fixture() {
   await m.state.cleanupLegacyBrowserState();
   assert.equal(m.legacy.has('cfdata-config'), false); assert.equal(m.legacy.get('unrelated'), 'keep');
   assert.ok(m.requests.every(r => r.type.startsWith('web_state_')), 'persistence granted publishing authority');
+  const oldDPAPI = fixture();
+  oldDPAPI.privateStatus('legacy-dpapi');
+  oldDPAPI.saved({ theme: 'light', config: { official: { threads: '20' }, nsb: {} } });
+  await oldDPAPI.state.loadWebState();
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /旧版 Windows 当前用户 DPAPI/);
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /明确保存.*转换/);
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /复制/);
+  await oldDPAPI.state.loadConfigFromLS();
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /旧版 Windows 当前用户 DPAPI/);
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /明确保存.*转换/);
+  await oldDPAPI.state.saveWebStateSections({ config: { official: { threads: '30' }, nsb: {} } });
+  oldDPAPI.privateStatus('encrypted');
+  await oldDPAPI.state.loadConfigFromLS();
+  assert.match(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /应用加密/);
+  assert.doesNotMatch(oldDPAPI.state.document.getElementById('webStateStatus').textContent, /DPAPI/);
+  assert.equal(oldDPAPI.state.webStateMetadata.privateFileStatus, 'encrypted');
   console.log('web_state_ui_test: passed');
 })().catch(e => { console.error(e); process.exitCode = 1; });

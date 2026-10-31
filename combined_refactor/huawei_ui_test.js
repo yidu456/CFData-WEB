@@ -23,7 +23,8 @@ vm.runInContext(`handleHuaweiMessage({type:'huawei_response',data:{action:'huawe
 assert.equal(elements.huaweiAK.value,'');assert.equal(elements.huaweiSK.value,'');assert.match(elements.huaweiConfigStatus.textContent,/6789/);
 assert.equal(elements.huaweiSaveEncrypted.disabled,false);
 assert.match(elements.huaweiConfigStatus.textContent,/当前配置仅内存/);
-assert.match(elements.huaweiConfigStatus.textContent,/上次保存\/加载验证为加密/);
+assert.match(elements.huaweiConfigStatus.textContent,/应用加密/);
+assert.match(elements.huaweiConfigStatus.textContent,/可跨支持平台/);
 vm.runInContext('saveHuaweiConfig(true)',ctx);
 assert.equal(sent.at(-1).type,'huawei_config_set');assert.equal(sent.at(-1).data.persist,true);
 assert.equal(sent.at(-1).data.ak,'');assert.equal(sent.at(-1).data.sk,'');
@@ -36,7 +37,13 @@ assert.equal(elements.huaweiDNSStatus.textContent,'Keep DNS state');assert.equal
 assert.match(elements.huaweiSaveStatus.textContent,/save failed/);
 vm.runInContext(`handleHuaweiMessage({type:'huawei_response',data:{action:'huawei_config_get',data:{hasSecret:true,region:'cn-north-4',projectId:'0123456789abcdef0123456789abcdef',persisted:false,encryptedSaveSupported:false,privatePath:'/home/test/.config/cfdata-web/huawei-dns.private',privateFileStatus:'legacy-plaintext',regions:['cn-north-4']}}})`,ctx);
 assert.equal(elements.huaweiSaveEncrypted.disabled,true);assert.match(elements.huaweiConfigStatus.textContent,/旧版明文文件（上次加载验证，未加密）/);
+assert.match(elements.huaweiConfigStatus.textContent,/当前后端不支持加密保存/);
 const unsupportedBefore=sent.length;vm.runInContext('saveHuaweiConfig(true)',ctx);assert.equal(sent.length,unsupportedBefore,'unsupported encrypted action must not send');
+vm.runInContext(`handleHuaweiMessage({type:'huawei_response',data:{action:'huawei_config_get',data:{hasSecret:true,region:'cn-north-4',projectId:'0123456789abcdef0123456789abcdef',persisted:true,encryptedSaveSupported:true,privatePath:'C:/Program/CFData/huawei-dns.private',privateFileStatus:'legacy-dpapi',regions:['cn-north-4']}}})`,ctx);
+assert.match(elements.huaweiConfigStatus.textContent,/旧版 Windows 当前用户 DPAPI/);
+assert.match(elements.huaweiConfigStatus.textContent,/当前配置与已读取旧版 DPAPI 文件一致/);
+assert.match(elements.huaweiConfigStatus.textContent,/明确保存.*转换/);
+assert.match(elements.huaweiConfigStatus.textContent,/复制/);
 elements.huaweiAK.value='RETRY_KEY';ctx.wsSend=()=>false;vm.runInContext('saveHuaweiConfig()',ctx);
 assert.equal(elements.huaweiAK.value,'RETRY_KEY','failed send must permit retry');
 ctx.wsSend=p=>{sent.push(p);return true;};

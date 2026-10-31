@@ -29,6 +29,11 @@ for (const url of [
 assert.match(html, /<details[^>]*id="huaweiHelp"/);
 assert.match(html, /id="huaweiLegacyMigrate"/);
 assert.match(html, /id="huaweiLegacyCleanup"/);
+assert.match(html, /AES-256-GCM/);
+assert.match(html, /随机 nonce/);
+assert.match(html, /固定程序密钥/);
+assert.match(html, /不能防止逆向/);
+assert.match(html, /DPAPI[^<]*保存加密配置[^<]*转换[^<]*复制/);
 
 const ids = ['huaweiAK', 'huaweiSK', 'huaweiRegion', 'huaweiProjectID', 'huaweiSaveEncrypted', 'huaweiSaveStatus', 'huaweiConfigStatus', 'huaweiDiscoveryStatus', 'huaweiDNSStatus', 'huaweiZone', 'huaweiRecord', 'huaweiTarget', 'huaweiPreview', 'huaweiConfirm', 'huaweiAuto', 'huaweiLegacyMigrate', 'huaweiLegacyCleanup', 'huaweiLegacyStatus', 'huaweiPrivatePath'];
 const elements = Object.fromEntries(ids.map(id => [id, { value: '', checked: false, disabled: false, textContent: '', innerHTML: '', className: '' }]));

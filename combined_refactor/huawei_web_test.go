@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,11 +35,7 @@ func TestHuaweiExplicitEncryptedSaveNeverCallsCloudOrReturnsSecrets(t *testing.T
 		if strings.Contains(string(raw), "AK_PRIVATE_123456789") || strings.Contains(string(raw), "SK_PRIVATE") {
 			t.Fatal("configuration response exposed credentials")
 		}
-		if persist && runtime.GOOS != "windows" {
-			if kind != "huawei_error" {
-				t.Fatal("unsupported save did not fail closed")
-			}
-		} else if kind != "huawei_response" {
+		if kind != "huawei_response" {
 			t.Fatal("configuration failed")
 		}
 	}

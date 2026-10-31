@@ -4,11 +4,8 @@ package main
 
 import "errors"
 
-const huaweiPrivateEncryptionSupported = false
+const legacyHuaweiPlaintextSupported = true
 
-func protectHuaweiPrivate(data []byte) ([]byte, error) {
-	return nil, errors.New("encrypted Huawei configuration saving is unsupported on this platform; use memory-only Apply")
+func unprotectLegacyHuaweiPrivate([]byte) ([]byte, error) {
+	return nil, errors.New("legacy DPAPI private data is unavailable on this platform")
 }
-
-// Legacy plaintext remains readable, but new persistent writes must fail closed.
-func unprotectHuaweiPrivate(data []byte) ([]byte, error) { return data, nil }

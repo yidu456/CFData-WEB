@@ -1820,7 +1820,7 @@
             <div id="webStateStatus" class="upload-status" role="status" aria-live="polite">尚未读取加密存储；当前仅内存使用</div>
             <details style="margin-top:8px;font-size:12px;">
                 <summary>旧浏览器数据迁移</summary>
-                <p>只在程序目录尚无 Web 保存数据时导入。导入不会启用自动上传或 DNS 更新。旧 token/密码密文与原访问地址绑定；地址改变时需重新输入。DPAPI 文件仅当前 Windows 用户可读，其他系统仅内存使用。</p>
+                <p>只在程序目录尚无 Web 保存数据时导入。导入不会启用自动上传或 DNS 更新。新保存使用 AES-256-GCM、随机 nonce 和固定程序密钥，可由本程序在支持平台间读取；固定密钥可被逆向提取，仅防止直接查看明文，不能防止逆向。旧 Windows DPAPI 文件仅原 Windows 用户可读，复制前须由该用户明确保存转换。旧 token/密码内层密文仍与原访问地址绑定；地址改变时需重新输入。</p>
                 <button class="menu-btn" onclick="importLegacyBrowserState()">明确导入此浏览器旧配置/账户</button>
                 <button class="danger-btn" id="webStateCleanup" onclick="confirmLegacyBrowserCleanup()" disabled>单独清理已成功导入且未变化的旧数据</button>
             </details>
@@ -2448,7 +2448,7 @@
                         <p id="huaweiPrivatePath">当前私有文件位置：尚未读取</p>
                         <p id="huaweiLegacyStatus">旧位置状态：尚未读取。迁移不会自动删除旧文件。</p>
                         <div class="modal-actions"><button class="action-btn" id="huaweiLegacyMigrate" onclick="manageHuaweiLegacy('migrate')" disabled>确认迁移旧配置</button><button class="action-btn" id="huaweiLegacyCleanup" onclick="manageHuaweiLegacy('cleanup')" disabled>确认清理已迁移旧文件</button></div>
-                        <p>Windows 使用当前用户 DPAPI 加密，文件不能直接供其他用户或机器解密。迁移仅在新位置不存在且旧文件可验证时可用；清理必须在本进程成功迁移且新旧文件均未变化后另行确认。失败或不支持时保留旧来源。</p>
+                        <p>新保存使用 AES-256-GCM、随机 nonce 和固定程序密钥，可由本程序在支持平台间读取；固定密钥可被逆向提取，仅防止直接查看明文，不能防止逆向。DPAPI 旧文件仅原 Windows 用户可读，请在该用户下点击“保存加密配置”转换后再复制。迁移仅在新位置不存在且旧文件可验证时可用；清理必须在本进程成功迁移且新旧文件均未变化后另行确认。失败或当前后端不支持时保留旧来源。</p>
                     </details>
                 </section>
                 <section class="huawei-section" id="huaweiTargetSection" aria-labelledby="huaweiTargetTitle">
@@ -3182,9 +3182,12 @@
                 applyConfigValues(response.sections.config);
                 resetLoadedPublishOptions();
                 webStateMemory.config = response.sections.config;
+                webStateMetadata = response.metadata;
                 webStateRevision = response.metadata.revision;
                 webStateDirty.delete('config');
-                setWebStateStatus('已明确加载加密配置；自动发布保持关闭');
+                setWebStateStatus(response.metadata.privateFileStatus === 'legacy-dpapi'
+                    ? '已明确加载旧版 Windows 当前用户 DPAPI 配置；请在原 Windows 用户下明确保存转换为应用加密格式后再复制'
+                    : '已明确加载应用加密配置；自动发布保持关闭');
             } catch (_) {
                 showNoticeCard('读取加密配置失败；当前输入未改变');
                 return;
@@ -3274,7 +3277,7 @@
                 unauthorized: '加密存储需要同源本机访问或有效登录',
                 invalid: '保存内容无效或过大', stale: '保存版本已变化；请重新读取后明确重试，当前输入保留',
                 exists: '程序目录已有 Web 保存数据，不能用旧浏览器数据覆盖',
-                unavailable: '加密存储不可用（仅 Windows 当前用户支持）；当前仍可内存使用',
+                unavailable: '当前后端加密存储不可用；当前仍可内存使用',
                 save_failed: '加密文件保存失败；原有数据保留',
             };
             return new Error(messages[code] || '加密存储请求失败；当前仍可内存使用');
@@ -3332,7 +3335,7 @@
                 const cleanup = document.getElementById('webStateCleanup');
                 if (cleanup) cleanup.disabled = true;
                 delete webStateMetadata.saveError;
-                setWebStateStatus(webStateDirty.size ? '已加密保存提交内容；后续修改尚未保存' : '已加密保存到程序目录');
+                setWebStateStatus(webStateDirty.size ? '已使用应用加密保存提交内容；后续修改尚未保存' : '已使用可跨支持平台读取的应用加密保存到程序目录');
                 return response;
             });
             webStateQueue = operation;
@@ -3359,7 +3362,11 @@
             renderEdgetunnelAccounts();
             resetLoadedPublishOptions();
             autoLoadConfig();
-            setWebStateStatus(webStateDirty.size ? '已读取加密数据；未保存修改保留在内存' : (webStateMetadata.encryptedSaveSupported ? '已读取加密存储；自动发布保持关闭' : '当前平台不支持加密保存；仅内存使用'));
+            if (webStateMetadata.privateFileStatus === 'legacy-dpapi') {
+                setWebStateStatus(`已读取旧版 Windows 当前用户 DPAPI 文件${webStateDirty.size ? '；未保存修改仍在内存' : ''}；请在原 Windows 用户下明确保存转换为应用加密格式后再复制`);
+            } else {
+                setWebStateStatus(webStateDirty.size ? '已读取应用加密数据；未保存修改保留在内存' : (webStateMetadata.encryptedSaveSupported ? '已读取应用加密存储；自动发布保持关闭' : '当前后端不支持加密保存；仅内存使用'));
+            }
         }
 
         function resetLoadedPublishOptions() {
@@ -7012,9 +7019,12 @@
                 document.getElementById('huaweiRegion').value = data.region || 'cn-north-4';
                 document.getElementById('huaweiProjectID').value = data.projectId || '';
                 document.getElementById('huaweiSaveEncrypted').disabled = data.encryptedSaveSupported !== true;
-                const fileStates = { absent: '无私有文件', encrypted: '私有文件存在（上次保存/加载验证为加密）', 'legacy-plaintext': '旧版明文文件（上次加载验证，未加密）', invalid: '上次加载验证失败；私有文件无效，未加载', unavailable: '私有文件不可读取', unverified: '私有文件未验证' };
+                const fileStates = { absent: '无私有文件', encrypted: '应用加密私有文件（上次保存/加载验证）', 'legacy-dpapi': '旧版 Windows 当前用户 DPAPI 文件（已读取；请明确保存转换后再复制）', 'legacy-plaintext': '旧版明文文件（上次加载验证，未加密）', invalid: '上次加载验证失败；私有文件无效，未加载', unavailable: '私有文件不可读取', unverified: '私有文件未验证' };
                 const legacyStates = { available: '发现可迁移旧文件', absent: '旧文件不存在', unavailable: '旧文件不可读取或路径不可用' };
-                document.getElementById('huaweiConfigStatus').textContent = `${data.maskedAK || '未配置 AK'} · SK ${data.hasSecret ? '已配置' : '未配置'} · ${data.persisted ? '当前配置与上次加密保存一致' : '当前配置仅内存或来自旧文件（未匹配上次加密保存）'} · ${fileStates[data.privateFileStatus] || '私有文件状态未知'} · ${data.encryptedSaveSupported ? '支持 Windows 当前用户 DPAPI 加密保存' : '当前后端不支持加密保存'}；AK/SK 留空保留`;
+                const persistedState = data.privateFileStatus === 'legacy-dpapi' && data.persisted
+                    ? '当前配置与已读取旧版 DPAPI 文件一致'
+                    : (data.persisted ? '当前配置与上次加密保存一致' : '当前配置仅内存或来自旧文件（未匹配上次加密保存）');
+                document.getElementById('huaweiConfigStatus').textContent = `${data.maskedAK || '未配置 AK'} · SK ${data.hasSecret ? '已配置' : '未配置'} · ${persistedState} · ${fileStates[data.privateFileStatus] || '私有文件状态未知'} · ${data.encryptedSaveSupported ? '支持可跨支持平台读取的应用加密保存' : '当前后端不支持加密保存'}；AK/SK 留空保留`;
                 document.getElementById('huaweiPrivatePath').textContent = `当前私有文件位置：${data.privatePath || '不可用'}`;
                 document.getElementById('huaweiLegacyStatus').textContent = `旧位置：${data.legacyPrivatePath || '不可用'} · ${legacyStates[data.legacyFileStatus] || '状态未知'}。迁移不会自动删除旧文件；清理需成功迁移后再次确认。`;
                 document.getElementById('huaweiLegacyMigrate').disabled = data.legacyMigrationSupported !== true;

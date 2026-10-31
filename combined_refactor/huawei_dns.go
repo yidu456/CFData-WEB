@@ -154,7 +154,7 @@ func (s *huaweiDNSStore) configure(c huaweiConfigRequest) error {
 func (s *huaweiDNSStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c, _, _, err := readHuaweiPrivateConfig(s.path)
+	c, _, _, format, err := readHuaweiPrivateConfig(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		s.privateFileStatus = "absent"
 		return nil
@@ -170,10 +170,7 @@ func (s *huaweiDNSStore) load() error {
 	s.revision++
 	s.savedConfig = c
 	s.savedConfig.Persist = false
-	s.privateFileStatus = "legacy-plaintext"
-	if huaweiPrivateEncryptionSupported {
-		s.privateFileStatus = "encrypted"
-	}
+	s.privateFileStatus = format
 	return nil
 }
 
@@ -192,7 +189,7 @@ func (s *huaweiDNSStore) status() huaweiConfigStatus {
 	}
 	current := s.config
 	current.Persist = false
-	status := huaweiConfigStatus{HasSecret: s.config.SK != "", Region: s.config.Region, ProjectID: s.config.ProjectID, Persisted: fileStatus == "encrypted" && current == s.savedConfig, EncryptedSaveSupported: huaweiPrivateEncryptionSupported && s.path != "", PrivatePath: s.path, PrivateFileStatus: fileStatus, Regions: []string{}}
+	status := huaweiConfigStatus{HasSecret: s.config.SK != "", Region: s.config.Region, ProjectID: s.config.ProjectID, Persisted: (fileStatus == "encrypted" || fileStatus == "legacy-dpapi") && current == s.savedConfig, EncryptedSaveSupported: huaweiPrivateEncryptionSupported && s.path != "", PrivatePath: s.path, PrivateFileStatus: fileStatus, Regions: []string{}}
 	status.LegacyPrivatePath = s.legacyPath
 	status.LegacyFileStatus = privatePathStatus(s.legacyPath)
 	status.LegacyMigrationSupported = huaweiPrivateEncryptionSupported && s.path != "" && s.legacyPath != "" && fileStatus == "absent" && status.LegacyFileStatus == "available"

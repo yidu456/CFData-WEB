@@ -1,5 +1,16 @@
 # Executable-Local Data and Huawei Page Plan
 
+> **2026-10-31 encryption amendment:** The portable-private-storage plan
+> supersedes the Windows-only DPAPI writer, unsupported-non-Windows save, and
+> non-Windows memory-only statements in this historical plan. New Huawei and
+> Web-state files use the versioned AES-256-GCM application envelope with a
+> random nonce and fixed, extractable program key on every supported platform.
+> Windows DPAPI is legacy current-user read compatibility and requires explicit
+> Save before copying; validated legacy plaintext is Huawei-only. This prevents
+> casual plaintext inspection, not reverse engineering. All unrelated
+> requirements and completed-task history below remain unchanged. See
+> `docs/superpowers/plans/2026-10-31-portable-private-storage.md`.
+
 > Execute sequentially with superpowers:subagent-driven-development; controller owns commits/pushes.
 
 **Goal:** Store program-owned default data beside the executable, move saved Web state out of localStorage, and simplify Huawei configuration. Browser downloads stay unchanged.
@@ -65,7 +76,9 @@
 **Consumes:** Task1 paths/migration, Task2 Web state and Task3 UI.
 **Produces:** reproducible offline integrated test coverage, truthful run/storage/migration docs, verified Windows/Linux artifacts and final whole-branch review.
 
-- [ ] Check path resolution from different launch CWD, legacy/new precedence, encrypted full saved state, per-section updates/reconnect/dirty edits, unchanged download and single Huawei entry. Run all Node suites, actual Chrome smoke, uncached Go tests/vet/scopedfmt/whitespace. Windows DPAPI runs natively; Linux build/test crosscompile without claiming Linux runtime/race/Android verification.
-- [ ] Inspect desktop/mobile screenshots. Document storage writable-directory requirement, explicit migration/cleanup, current-user DPAPI binding and unsupported nonWindows writes; CLI/scheduling not newly implemented. No logs/screenshots with live secrets.
-- [ ] Broad complete-delta review from5f6a86a through staged final changes, fix regression findings via implementer and scoped re-review. Commit/push `test: verify executable-local storage and Huawei setup flows` only if actual Task4 tracked changes exist; otherwise record verification with no empty commit.
+- [x] Check path resolution from different launch CWD, legacy/new precedence, encrypted full saved state, per-section updates/reconnect/dirty edits, unchanged download and single Huawei entry. Run all Node suites, actual Chrome smoke, uncached Go tests/vet/scopedfmt/whitespace. Windows DPAPI runs natively; Linux build/test crosscompile without claiming Linux runtime/race/Android verification.
+- [x] Inspect desktop/mobile screenshots. Document storage writable-directory requirement, explicit migration/cleanup, current-user DPAPI binding and unsupported nonWindows writes; CLI/scheduling not newly implemented. No logs/screenshots with live secrets.
+- [x] Broad complete-delta review from5f6a86a through staged final changes, fix regression findings via implementer and scoped re-review. Commit/push `test: verify executable-local storage and Huawei setup flows` only if actual Task4 tracked changes exist; otherwise record verification with no empty commit.
 - [ ] Build both artifacts; if an allowed separate hidden loopback preview launch is possible verify exact PID/EXE/13336 bind/HTTP/new UI. If policy blocks it, document manual command and leave live preview verification explicitly pending, no alternative policy bypass. Never replace/stop original production process.
+
+Final status (2026-10-31): integrated tests, documentation and Windows/Linux builds passed after the portable encryption amendment. No new preview process was launched; live loopback HTTP/UI verification remains pending. Native Linux/race/Android and live providers were not tested.

@@ -92,13 +92,13 @@ func (s *webStateStore) load() error {
 		s.fileStatus = "unavailable"
 		return errors.New("unavailable")
 	}
-	plain, err := unprotectHuaweiPrivate(raw)
+	plain, format, err := unprotectHuaweiPrivateFormat(raw)
 	var doc webStateDocument
 	if err != nil || decodeWebState(plain, &doc) != nil || doc.Version != 1 || doc.Revision == 0 || validateWebStateSections(doc.Sections) != nil {
 		s.fileStatus = "unavailable"
 		return errors.New("unavailable")
 	}
-	s.document, s.fileHash, s.fileStatus = doc, sha256.Sum256(raw), "encrypted"
+	s.document, s.fileHash, s.fileStatus = doc, sha256.Sum256(raw), format
 	return nil
 }
 

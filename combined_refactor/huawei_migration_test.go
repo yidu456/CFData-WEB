@@ -61,18 +61,8 @@ func TestHuaweiDefaultPathAndLegacyNeverAutoload(t *testing.T) {
 
 func TestHuaweiLegacyMigrationVerifiedFullConfigAndExplicitCleanup(t *testing.T) {
 	s, c := migrationTestStore(t)
-	before := s.config
 	if err := s.cleanupLegacy(); err == nil {
 		t.Fatal("cleanup before migration succeeded")
-	}
-	if runtime.GOOS != "windows" {
-		if err := s.migrateLegacy(); err == nil || s.config != before {
-			t.Fatal("unsupported migration succeeded")
-		}
-		if _, err := os.Stat(s.path); !os.IsNotExist(err) {
-			t.Fatal("unsupported migration wrote destination")
-		}
-		return
 	}
 	source, _ := os.ReadFile(s.legacyPath)
 	if err := s.migrateLegacy(); err != nil {
@@ -83,7 +73,7 @@ func TestHuaweiLegacyMigrationVerifiedFullConfigAndExplicitCleanup(t *testing.T)
 	}
 	loaded := &huaweiDNSStore{path: s.path}
 	if err := loaded.load(); err != nil || loaded.config != c {
-		t.Fatal("DPAPI migrated full config reload failed", err)
+		t.Fatal("migrated full config reload failed", err)
 	}
 	if got, _ := os.ReadFile(s.legacyPath); string(got) != string(source) {
 		t.Fatal("migration removed/changed source")
@@ -118,7 +108,7 @@ func TestHuaweiMigrationFailuresAndChangedCleanupPreserveFiles(t *testing.T) {
 			case "blocked":
 				os.WriteFile(filepath.Dir(s.path), []byte("blocking parent"), 0600)
 			}
-			if strings.HasSuffix(which, "-changed") && runtime.GOOS == "windows" {
+			if strings.HasSuffix(which, "-changed") {
 				if err := s.migrateLegacy(); err != nil {
 					t.Fatal(err)
 				}
@@ -170,9 +160,6 @@ func TestHuaweiMigrationActionsRequireAuthorizationAndConfirmation(t *testing.T)
 			}
 		}
 	}
-	if runtime.GOOS != "windows" {
-		return
-	}
 	s, _ := migrationTestStore(t)
 	var kind string
 	session := &appSession{emit: func(k string, _ interface{}) { kind = k }, dnsPreview: &huaweiPreview{}, webPublishOptions: webPublishOptions{DNS: true, GitHub: true}}
@@ -183,11 +170,8 @@ func TestHuaweiMigrationActionsRequireAuthorizationAndConfirmation(t *testing.T)
 }
 
 func TestHuaweiPrivateSaveDoesNotChangeParentMode(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("encrypted save requires Windows")
-	}
 	dir := t.TempDir()
-	if err := os.Chmod(dir, 0555); err != nil {
+	if err := os.Chmod(dir, 0750); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(dir, 0700) })

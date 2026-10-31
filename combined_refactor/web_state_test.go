@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,12 +31,6 @@ func TestWebStateSectionsEncryptedReloadAndStaleWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := statePatch(t, s, 0, `{"theme":"dark"}`); err != nil {
-		if runtime.GOOS != "windows" {
-			if _, e := os.Stat(s.path); !os.IsNotExist(e) {
-				t.Fatal("unsupported platform wrote state")
-			}
-			return
-		}
 		t.Fatal(err)
 	}
 	if err := statePatch(t, s, 1, `{"githubAccounts":[{"name":"fixture","repo":"owner/repo","token":"PRIVATE_FIXTURE_TOKEN"}]}`); err != nil {
@@ -90,9 +83,6 @@ func TestWebStateBoundsSchemaAndAbsentOnlyMigration(t *testing.T) {
 			t.Fatal("validation failure mutated state")
 		}
 	}
-	if runtime.GOOS != "windows" {
-		return
-	}
 	if err := statePatch(t, s, 0, `{"theme":"light"}`); err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +95,6 @@ func TestWebStateBoundsSchemaAndAbsentOnlyMigration(t *testing.T) {
 }
 
 func TestWebStateConcurrentCASPreservesSections(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("DPAPI requires Windows")
-	}
 	s := &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
 	var wg sync.WaitGroup
 	results := make(chan error, 2)
@@ -134,10 +121,8 @@ func TestWebStateConcurrentCASPreservesSections(t *testing.T) {
 
 func TestWebStateAuthorizedCorrelatedContentAndSafeMetadata(t *testing.T) {
 	s := &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
-	if runtime.GOOS == "windows" {
-		if e := statePatch(t, s, 0, `{"githubAccounts":[{"repo":"owner/repo","token":"PRIVATE_FIXTURE_TOKEN"}]}`); e != nil {
-			t.Fatal(e)
-		}
+	if e := statePatch(t, s, 0, `{"githubAccounts":[{"repo":"owner/repo","token":"PRIVATE_FIXTURE_TOKEN"}]}`); e != nil {
+		t.Fatal(e)
 	}
 	var kind string
 	var payload interface{}
@@ -160,7 +145,7 @@ func TestWebStateAuthorizedCorrelatedContentAndSafeMetadata(t *testing.T) {
 	}
 	handleWebStateAction(s, "web_state_get", json.RawMessage(`{"requestId":"get","content":true}`), func() bool { return true }, emit)
 	raw, _ = json.Marshal(payload)
-	if runtime.GOOS == "windows" && !strings.Contains(string(raw), "PRIVATE_FIXTURE_TOKEN") {
+	if !strings.Contains(string(raw), "PRIVATE_FIXTURE_TOKEN") {
 		t.Fatal("explicit authorized content absent")
 	}
 	oldUser, oldPass := webUser, webPassword
@@ -249,9 +234,6 @@ func TestWebStateActionsRejectIrrelevantFields(t *testing.T) {
 }
 
 func TestWebStateGetDetectsChangedCiphertext(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("DPAPI requires Windows")
-	}
 	s := &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
 	if err := statePatch(t, s, 0, `{"theme":"dark"}`); err != nil {
 		t.Fatal(err)
@@ -269,9 +251,6 @@ func TestWebStateGetDetectsChangedCiphertext(t *testing.T) {
 }
 
 func TestWebStateSaveFailurePreservesLastGoodMemory(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("DPAPI requires Windows")
-	}
 	s := &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
 	if err := statePatch(t, s, 0, `{"theme":"dark"}`); err != nil {
 		t.Fatal(err)
@@ -324,9 +303,6 @@ func TestWebStateQueuedActionRechecksInitiatingPermission(t *testing.T) {
 }
 
 func TestWebStateMigrationReceiptRequiresUnchangedDestination(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("DPAPI requires Windows")
-	}
 	s := &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
 	var response map[string]interface{}
 	emit := func(_ string, p interface{}) { response = p.(map[string]interface{}) }
@@ -365,10 +341,8 @@ func TestWebStateSocketReplyStaysOnInitiatingConnectionWhileFollowing(t *testing
 		skipGeoCheck, speedTestURL, webUser, webPassword = oldSkip, oldURL, oldUser, oldPass
 	}()
 	webState = &webStateStore{path: filepath.Join(t.TempDir(), "web-state.private")}
-	if runtime.GOOS == "windows" {
-		if e := statePatch(t, webState, 0, `{"githubAccounts":[{"repo":"owner/repo","token":"SOCKET_PRIVATE_FIXTURE"}]}`); e != nil {
-			t.Fatal(e)
-		}
+	if e := statePatch(t, webState, 0, `{"githubAccounts":[{"repo":"owner/repo","token":"SOCKET_PRIVATE_FIXTURE"}]}`); e != nil {
+		t.Fatal(e)
 	}
 	skipGeoCheck, speedTestURL, webUser, webPassword = true, "https://example.invalid/speed", "", ""
 	managementHTTPClientCache.Lock()
@@ -422,7 +396,7 @@ func TestWebStateSocketReplyStaysOnInitiatingConnectionWhileFollowing(t *testing
 		if msg.Type != "web_state_response" {
 			continue
 		}
-		if runtime.GOOS == "windows" && !strings.Contains(string(msg.Data), "SOCKET_PRIVATE_FIXTURE") {
+		if !strings.Contains(string(msg.Data), "SOCKET_PRIVATE_FIXTURE") {
 			t.Fatal("authorized socket content absent")
 		}
 		break

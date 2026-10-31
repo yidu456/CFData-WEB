@@ -5,10 +5,9 @@ import (
 	"unsafe"
 )
 
-const huaweiPrivateEncryptionSupported = true
+const legacyHuaweiPlaintextSupported = false
 
-func protectHuaweiPrivate(data []byte) ([]byte, error)   { return huaweiDPAPI(data, true) }
-func unprotectHuaweiPrivate(data []byte) ([]byte, error) { return huaweiDPAPI(data, false) }
+func unprotectLegacyHuaweiPrivate(data []byte) ([]byte, error) { return huaweiDPAPI(data, false) }
 func huaweiDPAPI(data []byte, encrypt bool) ([]byte, error) {
 	input := windows.DataBlob{Size: uint32(len(data))}
 	if len(data) > 0 {

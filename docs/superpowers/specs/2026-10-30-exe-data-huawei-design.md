@@ -1,5 +1,16 @@
 # Executable-Local Storage and Huawei DNS UI
 
+> **2026-10-31 encryption amendment:** The approved portable-private-storage
+> design supersedes every Windows-only/DPAPI-only and non-Windows memory-only
+> restriction below. New Huawei and Web-state saves use the versioned
+> AES-256-GCM application envelope with a random nonce and fixed, extractable
+> program key on every supported platform. Windows DPAPI remains a
+> current-user-only legacy read path and converts only after an explicit Save;
+> validated legacy plaintext remains Huawei-only. The fixed key prevents casual
+> plaintext inspection, not reverse engineering. All unrelated requirements in
+> this historical design remain binding. See
+> `docs/superpowers/plans/2026-10-31-portable-private-storage.md`.
+
 ## Approved Direction
 
 Continue in the existing isolated `dev` checkout at `422fde5`. The user approved

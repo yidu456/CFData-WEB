@@ -33,7 +33,7 @@ const fixtureToken = 'OFFLINE_PRIVATE_TOKEN';
       window.fixtureRead = key => originalGet.call(localStorage, key);
       window.fixtureWrite = (key, value) => originalSet.call(localStorage, key, value);
     }, { fixtureToken });
-    let sections = {}, revision = 0, failure = '', supported = true, holdSave = false, holdGet = false, held, heldGet, lastSocket;
+    let sections = {}, revision = 0, failure = '', supported = true, privateFileStatus = '', holdSave = false, holdGet = false, held, heldGet, lastSocket;
     const requests = [], errors = [], consoles = [];
     await context.routeWebSocket('**/*', socket => {
       lastSocket = socket;
@@ -46,7 +46,7 @@ const fixtureToken = 'OFFLINE_PRIVATE_TOKEN';
         const respond = () => {
           let data = { action: request.type, requestId, ok: !failure, code: failure };
           if (!failure) {
-            if (request.type === 'web_state_get') data = { ...data, metadata: { revision, encryptedSaveSupported: supported, privateFileStatus: revision ? 'encrypted' : 'absent', privatePath: 'C:/Offline EXE/web-state.private' }, sections };
+            if (request.type === 'web_state_get') data = { ...data, metadata: { revision, encryptedSaveSupported: supported, privateFileStatus: privateFileStatus || (revision ? 'encrypted' : 'absent'), privatePath: 'C:/Offline EXE/web-state.private' }, sections };
             else if (request.type === 'web_state_patch' || request.type === 'web_state_migrate') {
               if (!supported) data = { ...data, ok: false, code: 'unavailable' };
               else if (request.data.revision !== revision) data = { ...data, ok: false, code: 'stale' };
@@ -164,7 +164,14 @@ const fixtureToken = 'OFFLINE_PRIVATE_TOKEN';
     assert.equal(await page.locator('#officialThreads').inputValue(), '77');
     assert.equal(await page.locator('#huaweiAuto').isChecked(), false);
     assert.equal(await page.locator('#githubAutoSelected').isChecked(), false);
-    supported = false;
+    privateFileStatus = 'legacy-dpapi';
+    await page.evaluate(() => loadWebState());
+    assert.match(await page.locator('#webStateStatus').textContent(), /旧版 Windows 当前用户 DPAPI/);
+    assert.match(await page.locator('#webStateStatus').textContent(), /明确保存.*转换/);
+    await page.evaluate(() => saveConfigToLS());
+    assert.match(await page.locator('#webStateStatus').textContent(), /应用加密/);
+    privateFileStatus = '';
+    supported = false; // A backend capability failure, not a platform assumption.
     const oldRevision = revision;
     await page.evaluate(() => saveConfigToLS());
     assert.equal(revision, oldRevision); assert.equal(await page.locator('#officialThreads').inputValue(), '77');
@@ -184,7 +191,7 @@ const fixtureToken = 'OFFLINE_PRIVATE_TOKEN';
     const download = await downloadPromise;
     assert.match(download.suggestedFilename(), /^offline-state_\d+\.txt$/);
     assert.equal(fs.readFileSync(await download.path(), 'utf8'), '\ufeff198.51.100.1:443#NRT\n');
-    // Same DPAPI account blob at another origin does not unlock origin-bound inner cipher.
+    // The same stored account blob at another origin does not unlock its origin-bound inner cipher.
     const other = await context.newPage();
     await other.goto('http://localhost:13335/', { waitUntil: 'domcontentloaded' });
     await other.waitForFunction(() => webStateLoaded);
@@ -193,7 +200,7 @@ const fixtureToken = 'OFFLINE_PRIVATE_TOKEN';
     assert.ok(!requests.some(r => ['github_upload','edgetunnel_upload','web_github_publish','web_publish_options','huawei_update','start_web_batch','start_task'].includes(r.type)), 'persistence/loading granted cloud-write/scan authority');
     assert.deepEqual(errors, []);
     assert.ok(!consoles.join('\n').includes(fixtureToken), 'secret in browser console');
-    console.log('Offline Chrome Web state passed: explicit migration/failure/unchanged cleanup, preferences/config/account crypto save/delete/reload, dirty reconnect/delayed save, unsupported/authorization failure, discovered-only DC membership, origin-bound unlock, no cloud/scans/new browser persistence, unchanged Blob download.');
+    console.log('Offline Chrome Web state passed: explicit migration/failure/unchanged cleanup, preferences/config/account crypto save/delete/reload, dirty reconnect/delayed save, legacy DPAPI conversion copy, backend capability/authorization failure, discovered-only DC membership, origin-bound unlock, no cloud/scans/new browser persistence, unchanged Blob download.');
     await context.close();
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
