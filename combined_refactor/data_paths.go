@@ -11,6 +11,9 @@ import (
 var programExecutable = os.Executable
 
 func programDataDir() (string, error) {
+	if dir, handled, err := platformDataDir(); handled {
+		return dir, err
+	}
 	exe, err := programExecutable()
 	if err != nil || strings.TrimSpace(exe) == "" || !filepath.IsAbs(exe) {
 		return "", errors.New("executable data directory unavailable")

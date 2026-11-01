@@ -80,7 +80,7 @@ func (s *huaweiDNSStore) migrateLegacy() error {
 	if err != nil {
 		return errors.New("legacy configuration encoding failed")
 	}
-	// A hard link publishes the synced temporary file only if the destination is absent.
+	// Publish the synced temporary file only if the destination is absent.
 	if err := writeHuaweiPrivate(s.path, raw, false); err != nil {
 		return errors.New("legacy migration save failed; source preserved")
 	}

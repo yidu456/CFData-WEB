@@ -267,7 +267,7 @@ func atomicWriteFile(filename string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := os.Chmod(tmpName, perm); err != nil {
+	if err := chmodAtomicFile(tmpName, perm); err != nil {
 		os.Remove(tmpName)
 		return err
 	}

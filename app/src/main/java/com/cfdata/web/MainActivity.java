@@ -1,9 +1,12 @@
 package com.cfdata.web;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -11,8 +14,10 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -34,18 +39,16 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int PORT = 13335;
     private static final String BACKEND_LIBRARY = "libcfdata.so";
-    private static final int REQUEST_CREATE_DOCUMENT = 1001;
     private static final int REQUEST_FILE_CHOOSER = 1002;
+    private static final int REQUEST_STORAGE_PERMISSION = 1003;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -56,8 +59,8 @@ public class MainActivity extends Activity {
     private TextView loadingMessage;
     private ProgressBar loadingSpinner;
     private Process backendProcess;
-    private String pendingExportName;
-    private byte[] pendingExportBytes;
+    private File dataDirectory;
+    private boolean backendStarting;
     private ValueCallback<Uri[]> filePathCallback;
 
     @Override
@@ -72,7 +75,7 @@ public class MainActivity extends Activity {
         applySystemBarInsets(rootView);
         applyStatusBarTheme();
         configureWebView();
-        startBackend();
+        requestStorageAndStartBackend();
     }
 
     private boolean isDarkMode() {
@@ -214,18 +217,91 @@ public class MainActivity extends Activity {
         });
     }
 
+    private boolean hasDataStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStorageAndStartBackend() {
+        if (hasDataStoragePermission()) {
+            startBackend();
+            return;
+        }
+        setLoadingMessage("需要存储授权，才能保存配置、扫描结果和导出文件");
+        new AlertDialog.Builder(this)
+                .setTitle("授权保存应用文件")
+                .setMessage("应用文件将统一保存在 Download/cfdata-web。Android 11 及以上请开启本应用的“所有文件访问权限”；凭据仍以加密文件保存。")
+                .setPositiveButton("去授权", (dialog, which) -> requestDataStoragePermission())
+                .setNegativeButton("暂不授权", (dialog, which) -> showStoragePermissionError())
+                .setOnCancelListener(dialog -> showStoragePermissionError())
+                .show();
+    }
+
+    private void requestDataStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+            try {
+                startActivityForResult(intent, REQUEST_STORAGE_PERMISSION);
+            } catch (ActivityNotFoundException e) {
+                try {
+                    startActivityForResult(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION), REQUEST_STORAGE_PERMISSION);
+                } catch (ActivityNotFoundException | SecurityException unavailable) {
+                    showStoragePermissionError();
+                }
+            } catch (SecurityException e) {
+                showStoragePermissionError();
+            }
+        } else {
+            requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE_PERMISSION);
+        }
+    }
+
+    private void showStoragePermissionError() {
+        showStartupError("需要存储权限", "尚未获得 Download/cfdata-web 的访问权限，未启动服务。点击此页面可重新授权。");
+        loadingView.setOnClickListener(view -> requestStorageAndStartBackend());
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_STORAGE_PERMISSION) {
+            if (hasDataStoragePermission()) {
+                startBackend();
+            } else {
+                showStoragePermissionError();
+            }
+        }
+    }
+
     private void startBackend() {
+        if (backendStarting) {
+            return;
+        }
+        backendStarting = true;
+        loadingView.setOnClickListener(null);
+        loadingSpinner.setVisibility(View.VISIBLE);
+        loadingTitle.setText("CFData-WEB");
         executor.execute(() -> {
             try {
                 setLoadingMessage("正在准备本地服务...");
+                dataDirectory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "cfdata-web");
+                AppDataFiles.prepareDirectory(dataDirectory);
+                AppDataFiles.migrateLegacyFiles(getFilesDir(), dataDirectory);
                 File backend = prepareBackendBinary();
                 ProcessBuilder builder = new ProcessBuilder(
                         backend.getAbsolutePath(),
                         "-host", "127.0.0.1",
                         "-port", String.valueOf(PORT)
                 );
-                builder.directory(getFilesDir());
+                builder.directory(dataDirectory);
+                builder.environment().put("CFDATA_DATA_DIR", dataDirectory.getAbsolutePath());
+                builder.environment().put("TMPDIR", dataDirectory.getAbsolutePath());
                 builder.redirectErrorStream(true);
+                builder.redirectOutput(ProcessBuilder.Redirect.appendTo(new File(dataDirectory, "cfdata-backend.log")));
                 backendProcess = builder.start();
                 setLoadingMessage("正在连接本地服务...");
                 waitForBackend();
@@ -234,7 +310,13 @@ public class MainActivity extends Activity {
                     webView.loadUrl("http://127.0.0.1:" + PORT);
                 });
             } catch (Exception e) {
-                mainHandler.post(() -> showStartupError("启动失败", "本地服务启动失败，请重新打开应用\n" + e.getMessage()));
+                if (backendProcess != null) {
+                    backendProcess.destroy();
+                }
+                mainHandler.post(() -> {
+                    backendStarting = false;
+                    showStartupError("启动失败", "无法准备 Download/cfdata-web 或启动本地服务，请检查存储权限后重新打开应用\n" + e.getMessage());
+                });
             }
         });
     }
@@ -358,25 +440,18 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public void saveTextFile(String fileName, String content) {
-            mainHandler.post(() -> {
-                pendingExportName = sanitizeFileName(fileName);
-                byte[] bom = new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
-                byte[] data = content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8);
-                pendingExportBytes = new byte[bom.length + data.length];
-                System.arraycopy(bom, 0, pendingExportBytes, 0, bom.length);
-                System.arraycopy(data, 0, pendingExportBytes, bom.length, data.length);
-                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType(pendingExportName.endsWith(".csv") ? "text/csv" : "text/plain");
-                intent.putExtra(Intent.EXTRA_TITLE, pendingExportName);
-                startActivityForResult(intent, REQUEST_CREATE_DOCUMENT);
+            executor.execute(() -> {
+                try {
+                    if (dataDirectory == null || !hasDataStoragePermission()) {
+                        throw new IOException("存储权限未授权，请重新打开应用并授权");
+                    }
+                    File saved = AppDataFiles.writeExport(dataDirectory, fileName, content);
+                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "已保存: " + saved.getAbsolutePath(), Toast.LENGTH_LONG).show());
+                } catch (IOException | SecurityException e) {
+                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
             });
         }
-    }
-
-    private String sanitizeFileName(String fileName) {
-        String name = fileName == null ? "cfdata-results.txt" : fileName.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        return name.isEmpty() ? "cfdata-results.txt" : name;
     }
 
     private int dp(int value) {
@@ -386,19 +461,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CREATE_DOCUMENT) {
-            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingExportBytes != null) {
-                try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
-                    if (out != null) {
-                        out.write(pendingExportBytes);
-                        Toast.makeText(this, "已保存: " + pendingExportName, Toast.LENGTH_SHORT).show();
-                    }
-                } catch (IOException e) {
-                    Toast.makeText(this, "保存失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                }
+        if (requestCode == REQUEST_STORAGE_PERMISSION) {
+            if (hasDataStoragePermission()) {
+                startBackend();
+            } else {
+                showStoragePermissionError();
             }
-            pendingExportBytes = null;
-            pendingExportName = null;
             return;
         }
         if (requestCode == REQUEST_FILE_CHOOSER) {

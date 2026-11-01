@@ -248,7 +248,7 @@ func writeHuaweiPrivate(path string, raw []byte, replace bool) error {
 	}
 	name := f.Name()
 	defer os.Remove(name)
-	if err = f.Chmod(0600); err == nil {
+	if err = chmodPrivateFile(f); err == nil {
 		_, err = f.Write(raw)
 	}
 	if err == nil {
@@ -262,7 +262,7 @@ func writeHuaweiPrivate(path string, raw []byte, replace bool) error {
 		return closeErr
 	}
 	if !replace {
-		return os.Link(name, path)
+		return publishNewPrivateFile(name, path)
 	}
 	return os.Rename(name, path)
 }

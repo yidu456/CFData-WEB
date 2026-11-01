@@ -27,6 +27,8 @@ cfdata
 cfdata-*
 !app/src/main/java/com/cfdata/
 !app/src/main/java/com/cfdata/**
+!app/src/test/java/com/cfdata/
+!app/src/test/java/com/cfdata/**
 combined_refactor/cfdata
 combined_refactor/cfdata-*
 cfdata-config.json
