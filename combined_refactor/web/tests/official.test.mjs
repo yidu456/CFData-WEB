@@ -1,0 +1,69 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+const load = async () => import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('../features/official/model.js', import.meta.url))).toString('base64'));
+const base = { ipType: '4', port: '443', threads: '100', delay: '500', scanMode: 'tcping' };
+
+test('scan request validates existing families and ports, keeps zero delay', async () => {
+  const { buildScanRequest } = await load();
+  for (const port of [443,2053,2083,2087,2096,8443,80,8080,8880,2052,2082,2086,2095]) {
+    assert.deepEqual(buildScanRequest({ ...base, port: String(port) }), { ipType: 4, port, threads: 100, delay: 500, scanMode: 'tcping', autoSpeed: false });
+  }
+  assert.equal(buildScanRequest({ ...base, ipType: '6', delay: '0', scanMode: 'httping' }).delay, 0);
+  for (const values of [{ipType:'5'}, {port:'abc'}, {port:'0'}, {port:'22'}, {threads:'1.5'}, {threads:''}, {threads:'10001'}, {delay:'-1'}, {delay:'60001'}, {scanMode:'unknown'}]) {
+    assert.throws(() => buildScanRequest({ ...base, ...values }));
+  }
+});
+
+test('rows preserve full data, deduplicate endpoints and convert nanos for latency sorting', async () => {
+  const { createOfficialState, reduceOfficial, visibleScanRows } = await load();
+  let state = createOfficialState();
+  state = reduceOfficial(state, {type:'scan_result',data:{IP:'192.0.2.1',Port:443,DataCenter:'HKG',LatencyStr:'12.00ms',TCPDuration:12000000}});
+  state = reduceOfficial(state, {type:'scan_result',data:{IP:'192.0.2.2',Port:443,TCPDuration:5000000}});
+  state = reduceOfficial(state, {type:'scan_result',data:{IP:'192.0.2.1',Port:443,DataCenter:'HKG',TCPDuration:8000000}});
+  assert.equal(state.rows.length,2); assert.equal(state.rows[0].latencyMS,8);
+  assert.equal(visibleScanRows(state)[0].IP,'192.0.2.2');
+  state = reduceOfficial(state,{type:'scan_result',data:{IP:'2001:db8::1',Port:443}});
+  assert.equal(state.rows[2].latencyMS,null);
+  state = reduceOfficial(state,{type:'scan_result',data:{IP:'',Port:443}});
+  assert.equal(state.rows.length,3);
+});
+
+test('completed DC summaries sort by latency and selection must match current summary', async () => {
+  const { createOfficialState, reduceOfficial } = await load();
+  let state = reduceOfficial(createOfficialState(), {type:'scan_complete_wait_dc', data:[{DataCenter:'NRT',IPCount:2,MinLatency:20},{DataCenter:'HKG',IPCount:3,MinLatency:5}]});
+  assert.equal(state.centers[0].DataCenter,'HKG');
+  state = reduceOfficial(state,{type:'select_dc',data:'HKG'});
+  assert.equal(state.selectedDC,'HKG');
+  state = reduceOfficial(state,{type:'select_dc',data:'../secret'});
+  assert.equal(state.selectedDC,'HKG');
+  const previous=state;
+  assert.equal(reduceOfficial(state,{type:'task_stopped'}),previous);
+  state = reduceOfficial(state,{type:'scan_requested'});
+  assert.equal(state.centers.length,0); assert.equal(state.rows.length,0); assert.equal(state.selectedDC,'');
+});
+
+test('live display is bounded without discarding stored rows', async () => {
+  const { createOfficialState, reduceOfficial, visibleScanRows } = await load();
+  let state=createOfficialState();
+  for(let i=0;i<105;i++)state=reduceOfficial(state,{type:'scan_result',data:{IP:`192.0.2.${i}`,Port:443,TCPDuration:i*1000000}});
+  assert.equal(state.rows.length,105); assert.equal(visibleScanRows(state).length,100);
+});
+
+test('following a different background task does not mix scan rows or DC selection', async () => {
+  const { createOfficialState, reduceOfficial } = await load();
+  let state=reduceOfficial(createOfficialState(),{type:'scan_requested',data:{startedAt:'first'}});
+  state=reduceOfficial(state,{type:'scan_result',data:{IP:'192.0.2.1',Port:443,TCPDuration:1000000}});
+  state=reduceOfficial(state,{type:'scan_complete_wait_dc',data:[{DataCenter:'HKG',IPCount:1,MinLatency:1}]});
+  state=reduceOfficial(state,{type:'select_dc',data:'HKG'});
+  state=reduceOfficial(state,{type:'background_task_following',data:{mode:'official',startedAt:'second'}});
+  assert.equal(state.rows.length,0);assert.equal(state.centers.length,0);assert.equal(state.selectedDC,'');
+});
+
+test('large IPv6 result sets retain endpoints without copying the full collection per event', async () => {
+  const { createOfficialState, reduceOfficial, visibleScanRows } = await load();
+  let state=createOfficialState();
+  const rows=state.rows;
+  for(let i=0;i<65536;i++)state=reduceOfficial(state,{type:'scan_result',data:{IP:`2001:db8::${i.toString(16)}`,Port:443,TCPDuration:i*1000000}});
+  assert.equal(state.rows,rows);assert.equal(state.rows.length,65536);assert.equal(visibleScanRows(state).length,100);
+});

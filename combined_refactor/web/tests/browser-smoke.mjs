@@ -20,7 +20,7 @@ try {
   await page.goto(baseURL + '/workbench');
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
   await page.waitForFunction(() => document.querySelector('[data-connection]').textContent === '已连接服务器' && !document.querySelector('[data-task-action="refresh"]').disabled);
-  assert.match(await page.locator('[role="status"]').innerText(), /已连接服务器/);
+  assert.match(await page.locator('[data-connection]').innerText(), /已连接服务器/);
   assert.equal(await page.locator('[data-panel]:visible').count(), 1);
   await page.locator('[data-mode="nonstandard"]').click();
   assert.equal(await page.locator('[data-mode-panel="nonstandard"]').isVisible(), true);

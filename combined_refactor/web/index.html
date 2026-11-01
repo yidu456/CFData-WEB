@@ -18,7 +18,7 @@
       <span class="brand-mark" aria-hidden="true">CF</span><span>CFData</span>
     </a>
     <div class="header-actions">
-      <span class="stage-label">前端重构 · 第 2 阶段</span>
+      <span class="stage-label">前端重构 · 第 3 阶段</span>
       <label class="theme-control" for="theme-preference">外观
         <select id="theme-preference">
           <option value="auto">跟随系统</option>
@@ -60,11 +60,20 @@
         </div>
         <div class="workbench-grid">
           <section class="surface" aria-labelledby="parameters-title">
-            <div class="surface-header"><h2 id="parameters-title">任务参数</h2><span class="pending-label">待迁移</span></div>
+            <div class="surface-header"><h2 id="parameters-title">任务参数</h2><span class="pending-label">官方扫描已接入</span></div>
             <div class="surface-body">
               <div id="official-panel" data-mode-panel="official">
                 <h3>官方优选</h3><p class="sub">从官方地址段扫描，选择数据中心后执行详细测试与测速。</p>
-                <ul class="capabilities"><li>IPv4 / IPv6 与扫描约束</li><li>数据中心汇总与选择</li><li>详细测试与自动测速</li></ul>
+                <form class="official-form" data-official-form>
+                  <label>地址族<select name="ipType"><option value="4">IPv4</option><option value="6">IPv6</option></select></label>
+                  <label>目标端口<select name="port"><option value="443">HTTPS 443</option><option value="2053">HTTPS 2053</option><option value="2083">HTTPS 2083</option><option value="2087">HTTPS 2087</option><option value="2096">HTTPS 2096</option><option value="8443">HTTPS 8443</option><option value="80">HTTP 80</option><option value="8080">HTTP 8080</option><option value="8880">HTTP 8880</option><option value="2052">HTTP 2052</option><option value="2082">HTTP 2082</option><option value="2086">HTTP 2086</option><option value="2095">HTTP 2095</option></select></label>
+                  <label>扫描并发<input type="number" name="threads" min="1" max="10000" step="1" value="100" required></label>
+                  <label>合格延迟（ms）<input type="number" name="delay" min="0" max="60000" step="1" value="500" required></label>
+                  <label>测量方式<select name="scanMode"><option value="tcping">TCPing</option><option value="httping">HTTPing</option></select></label>
+                  <p class="sub" data-official-measurement>TCPing 测量 TCP 建连延迟；合格延迟 0 表示不以该阈值筛除。</p>
+                  <button class="button button-primary" type="submit" data-official-start disabled>开始官方扫描</button>
+                  <p class="sub" data-official-validation role="status">详细测试、自动测速与自动上传在后续步骤接入，当前扫描不执行这些动作。</p>
+                </form>
               </div>
               <div id="nonstandard-panel" data-mode-panel="nonstandard" hidden>
                 <h3>非标优选</h3><p class="sub">从文件或 URL 导入端点，独立配置扫描、链路复验与测速。</p>
@@ -74,14 +83,13 @@
             </div>
           </section>
           <section class="surface results-surface" aria-labelledby="results-title">
-            <div class="surface-header"><h2 id="results-title">结果工作区</h2><span class="pending-label">待迁移</span></div>
-            <div class="empty-state">
-              <div class="empty-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-              <h3>这里将显示真实优选结果</h3>
-              <p>扫描、测速、筛选、排序和导出将在后续阶段接入。当前不显示示例 IP 或模拟数据。</p>
-              <a class="button" href="/">在旧版查看结果</a>
+            <div class="surface-header"><h2 id="results-title">官方扫描结果</h2><span class="pending-label">实时数据</span></div>
+            <div class="surface-body"><p class="sub" data-official-count>尚无扫描结果</p></div>
+            <div class="scan-table-wrap" tabindex="0" role="region" aria-label="官方扫描表格，可横向滚动">
+              <table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">延迟</th></tr></thead><tbody data-official-rows></tbody></table>
             </div>
-            <footer class="surface-footer">完整结果字段、复制与导出能力将按功能清单保留。</footer>
+            <div class="surface-body"><h3>数据中心汇总</h3><div class="dc-choices" data-official-centers></div><p class="sub" data-official-selection>扫描完成后选择数据中心</p></div>
+            <footer class="surface-footer">详细测试与测速即将迁移。全部复制、导出和发布操作仍可使用<a href="/">完整旧版</a>；非标结果尚未迁移。</footer>
           </section>
         </div>
       </section>

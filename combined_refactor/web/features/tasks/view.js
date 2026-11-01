@@ -21,6 +21,7 @@ export function mountTasks({ root, client }) {
   }
   function render() {
     const ready = connection === 'connected' && state.initialized;
+    const controlPending = pending && !pending.startsWith('start_');
     setText('[data-connection]', labels[connection]);
     setText('[data-task-phase]', state.phase);
     setText('[data-task-message]', state.message || (state.background ? '后台快照不会回放断线期间全部中间结果' : '尚无当前连接的运行任务；新任务仍请在旧版启动'));
@@ -34,8 +35,8 @@ export function mountTasks({ root, client }) {
     const progress = find('[data-task-progress]');
     progress.value = state.percent;
     find('[data-task-action="follow"]').disabled = !ready || !state.background || state.following || !!pending;
-    find('[data-task-action="stop"]').disabled = !ready || !state.running || state.stopping || !!pending;
-    find('[data-task-action="background"]').disabled = !ready || !state.running || state.background || state.stopping || !!pending;
+    find('[data-task-action="stop"]').disabled = !ready || !state.running || state.stopping || !!controlPending;
+    find('[data-task-action="background"]').disabled = !ready || !state.running || state.background || state.stopping || !!controlPending;
     find('[data-task-action="refresh"]').disabled = !ready;
     find('[data-task-status]').dataset.outcome = state.outcome;
     const shouldPoll = ready && state.background && state.running && !state.following;
@@ -69,7 +70,7 @@ export function mountTasks({ root, client }) {
   find('[data-task-confirm-ok]').addEventListener('click', () => {
     const action = dialog.dataset.action;
     dialog.close();
-    if (connection !== 'connected' || !state.initialized || !state.running || pending || dialog.dataset.startedAt !== state.startedAt) return;
+    if (connection !== 'connected' || !state.initialized || !state.running || (pending && !pending.startsWith('start_')) || dialog.dataset.startedAt !== state.startedAt) return;
     send(action);
   });
   find('[data-log-clear]').addEventListener('click', () => logList.replaceChildren());
@@ -89,11 +90,12 @@ export function mountTasks({ root, client }) {
     onMessage(message) {
       if (message.type === 'error') {
         log(typeof message.data === 'string' ? message.data : '服务器请求错误');
-        if (!pending && state.running) state = reduceTask(state, { type: 'task_error', data: message.data });
+        if ((!pending || pending.startsWith('start_')) && state.running) state = reduceTask(state, { type: 'task_error', data: message.data });
         clearPending();
       } else if (message.type === 'log') log(typeof message.data === 'string' ? message.data : '服务器日志');
       const previousTask = state.startedAt;
       state = reduceTask(state, message);
+      if (pending.startsWith('start_') && ['scan_progress', 'test_progress', 'official_speed_progress', 'nsb_progress'].includes(message.type)) clearPending();
       if (previousTask !== state.startedAt) {
         clearPending();
         if (dialog.open) dialog.close();
@@ -104,6 +106,16 @@ export function mountTasks({ root, client }) {
       render();
     },
     onError: log,
+    getState: () => state,
+    isReady: () => connection === 'connected' && state.initialized && !state.running && !state.stopping && !pending,
+    startTask(type, data, label) {
+      if (connection !== 'connected' || !state.initialized || state.running || state.stopping || pending) return false;
+      if (!client.send(type, data)) { log('任务未发送，请检查连接后重试'); return false; }
+      state = reduceTask(state, { type: 'request_start', data: { label, mode: 'official', startedAt: new Date().toISOString() } });
+      pending = type;
+      render();
+      return true;
+    },
     destroy() { clearPending(); clearInterval(poll); poll = undefined; },
   };
 }

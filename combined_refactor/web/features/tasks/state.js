@@ -35,6 +35,9 @@ export function reduceTask(state, { type, data }) {
       return { ...state, initialized: true, version: text(p.version), speedURL: text(p.speedTestDefault || p.speedTestURL), proxyWarning: p.proxyWarning === true };
     case 'request_stop':
       return { ...state, stopping: true, phase: '正在停止', message: '已发送停止请求，等待服务器整理可用结果' };
+    case 'request_start':
+      return { ...createTaskState(), initialized: state.initialized, version: state.version, speedURL: state.speedURL, proxyWarning: state.proxyWarning,
+        running: true, mode: text(p.mode), label: text(p.label), startedAt: text(p.startedAt), phase: '准备中', message: '已提交任务，等待后端开始' };
     case 'task_error':
       return finish(state, 'failed', text(data) || '任务执行失败');
     case 'background_task_enabled':

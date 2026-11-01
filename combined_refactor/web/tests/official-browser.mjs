@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
+const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const base = process.argv[2] || 'http://127.0.0.1:13336';
+const output = path.resolve('../build/workbench-official');
+await mkdir(output,{recursive:true});
+const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
+try {
+  const context=await browser.newContext({viewport:{width:1366,height:950}});
+  const commands=[],errors=[]; let socket;
+  const emit=(type,data)=>socket.send(JSON.stringify({type,data}));
+  await context.routeWebSocket('**/ws',ws=>{
+    socket=ws;
+    ws.onMessage(raw=>{
+      const message=JSON.parse(raw); commands.push(message);
+      if(message.type==='get_background_task_status')emit('background_task_missing',null);
+    });
+    emit('init_config',{version:'official-test',speedTestDefault:'auto'});
+  });
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(base+'/workbench');
+  const start=page.locator('[data-official-start]');
+  await page.waitForFunction(()=>!document.querySelector('[data-official-start]').disabled);
+  assert.equal(await page.locator('[name="port"] option').count(),13);
+  await page.locator('[name="ipType"]').selectOption('6');
+  await page.locator('[name="delay"]').fill('0');
+  await page.locator('[name="scanMode"]').selectOption('httping');
+  await start.click();
+  assert.deepEqual(commands.find(m=>m.type==='start_task').data,{ipType:6,port:443,threads:100,delay:0,scanMode:'httping',autoSpeed:false});
+  assert.equal(await start.isEnabled(),false);
+  assert.equal(await page.locator('[data-task-action="stop"]').isEnabled(),true);
+  await page.locator('[data-section="tasks"]').click();
+  assert.match(await page.locator('[data-task-phase]').innerText(),/准备中/);
+  emit('scan_progress',{current:2,total:10});
+  emit('scan_result',{IP:'192.0.2.1',Port:443,DataCenter:'HKG',City:'香港',LatencyStr:'12ms',TCPDuration:12000000});
+  emit('scan_result',{IP:'2001:db8::1',Port:443,DataCenter:'NRT',City:'<img src=x onerror=alert(1)>',LatencyStr:'20ms',TCPDuration:20000000});
+  emit('scan_complete_wait_dc',[{DataCenter:'NRT',City:'东京',IPCount:1,MinLatency:20},{DataCenter:'HKG',City:'香港',IPCount:1,MinLatency:12}]);
+  emit('task_stopped',null);
+  await page.locator('[data-section="workbench"]').click();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-official-rows] tr').length===2);
+  assert.equal(await page.locator('[data-official-rows] img').count(),0);
+  assert.match(await page.locator('[data-official-count]').innerText(),/2/);
+  await page.locator('[data-dc="HKG"]').click();
+  assert.equal(await page.locator('[data-dc="HKG"]').getAttribute('aria-pressed'),'true');
+  assert.match(await page.locator('[data-official-selection]').innerText(),/HKG/);
+  for(const width of [320,375,768,1366]){
+    await page.setViewportSize({width,height:950});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),true);
+    if(width===375)await page.screenshot({path:path.join(output,'mobile.png'),fullPage:true});
+  }
+  await page.screenshot({path:path.join(output,'desktop.png'),fullPage:true});
+  emit('background_task_found',{mode:'official',running:true,startedAt:'different-background-task',phase:'扫描中'});
+  await page.waitForFunction(()=>!document.querySelector('[data-task-action="follow"]').disabled);
+  await page.locator('[data-task-action="follow"]').click();
+  emit('background_task_following',{mode:'official',running:true,startedAt:'different-background-task',phase:'扫描中'});
+  await page.waitForFunction(()=>document.querySelectorAll('[data-official-rows] tr').length===0);
+  assert.equal(await page.locator('[data-dc="HKG"]').count(),0);
+  emit('task_stopped',null);
+  await page.waitForFunction(()=>!document.querySelector('[data-official-start]').disabled);
+  await start.click();
+  emit('error','地址库下载失败');emit('task_complete',null);
+  await page.waitForFunction(()=>!document.querySelector('[data-official-start]').disabled);
+  assert.match(await page.locator('[data-task-phase]').innerText(),/任务失败/);
+  assert.equal(await page.locator('[data-official-rows] tr').count(),0);
+  assert.deepEqual(errors,[]);
+  await context.close();
+  console.log('PASS: official request/ports/zero-delay, global mutex/control, partial rows, safe text/DC selection, 320/375/768/1366px, retry/error terminal.');
+}finally{await browser.close();}

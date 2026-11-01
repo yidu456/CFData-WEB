@@ -90,3 +90,13 @@ test('display text strips credentials and signed query parameters from source UR
   assert.equal(JSON.stringify(state).includes('secret'), false);
   assert.equal(JSON.stringify(state).includes('password'), false);
 });
+
+test('local start request owns the task before the first progress or error frame', async () => {
+  const { createTaskState, reduceTask } = await load();
+  let state = reduceTask(createTaskState(), {type:'task_error',data:'previous failure'});
+  state = reduceTask(state, {type:'request_start',data:{label:'官方优选扫描',mode:'official',startedAt:'new-local-task'}});
+  assert.equal(state.running,true); assert.equal(state.background,false); assert.equal(state.outcome,'');
+  assert.equal(state.startedAt,'new-local-task'); assert.equal(state.label,'官方优选扫描');
+  state = reduceTask(state,{type:'task_error',data:'地址库下载失败'});
+  assert.equal(state.outcome,'failed'); assert.equal(state.running,false);
+});
