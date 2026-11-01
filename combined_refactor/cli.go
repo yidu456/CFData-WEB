@@ -58,6 +58,7 @@ type cliConfig struct {
 	startRow        int
 	endRow          int
 	export          cliExportConfig
+	huawei          cliHuaweiConfig
 }
 
 type cliExportConfig struct {
@@ -85,61 +86,62 @@ type cliExportConfig struct {
 }
 
 type cliFileConfig struct {
-	CLI             bool    `json:"cli"`
-	Mode            string  `json:"mode"`
-	ScanMode        string  `json:"scanmode"`
-	IPType          int     `json:"offiptype"`
-	Threads         int     `json:"offthreads"`
-	NSBThreads      int     `json:"nsbthreads"`
-	Out             string  `json:"out"`
-	SpeedTest       int     `json:"nsbspeedtest"`
-	Progress        bool    `json:"progress"`
-	NoColor         bool    `json:"nocolor"`
-	SkipGeo         bool    `json:"skipgeo"`
-	URL             string  `json:"offurl"`
-	NSBURL          string  `json:"nsburl"`
-	DNS             string  `json:"dns"`
-	Debug           any     `json:"debug"`
-	CompactIPv4     bool    `json:"compactipv4"`
-	TestPort        int     `json:"offport"`
-	Delay           int     `json:"offdelay"`
-	NSBDelay        int     `json:"nsbdelay"`
-	DC              string  `json:"offdc"`
-	SpeedLimit      int     `json:"offspeedlimit"`
-	SpeedMin        float64 `json:"offspeedmin"`
-	File            string  `json:"nsbfile"`
-	SourceURL       string  `json:"nsbsourceurl"`
-	NSBFallbackPort int     `json:"nsbfallbackport"`
-	NSBDC           string  `json:"nsbdc"`
-	Relink          bool    `json:"relink"`
-	RelinkHost      string  `json:"relinkhost"`
-	Proxy           string  `json:"proxy"`
-	OutIPType       string  `json:"outiptype"`
-	OutQualified    string  `json:"outqualified"`
-	TLS             bool    `json:"nsbtls"`
-	Compact         bool    `json:"nsbcompact"`
-	ResultLimit     int     `json:"nsbresultlimit"`
-	NSBSpeedMin     float64 `json:"nsbspeedmin"`
-	NSBSpeedLimit   int     `json:"nsbspeedlimit"`
-	Format          string  `json:"outformat"`
-	Fields          string  `json:"outfields"`
-	Custom          string  `json:"outcustom"`
-	V6Bracket       bool    `json:"outv6bracket"`
-	Separator       string  `json:"outseparator"`
-	OutStartRow     int     `json:"outstartrow"`
-	OutEndRow       int     `json:"outendrow"`
-	GitHub          bool    `json:"github"`
-	GHRepo          string  `json:"ghrepo"`
-	GHBranch        string  `json:"ghbranch"`
-	GHPath          string  `json:"ghpath"`
-	GHMessage       string  `json:"ghmessage"`
-	GHToken         string  `json:"ghtoken"`
-	GHTokenFile     string  `json:"ghtokenfile"`
-	GHUpload        string  `json:"ghupload"`
-	EdgeTunnel      bool    `json:"edgetunnel"`
-	ETHost          string  `json:"ethost"`
-	ETPassword      string  `json:"etpassword"`
-	ETMode          string  `json:"etmode"`
+	CLI             bool            `json:"cli"`
+	Mode            string          `json:"mode"`
+	ScanMode        string          `json:"scanmode"`
+	IPType          int             `json:"offiptype"`
+	Threads         int             `json:"offthreads"`
+	NSBThreads      int             `json:"nsbthreads"`
+	Out             string          `json:"out"`
+	SpeedTest       int             `json:"nsbspeedtest"`
+	Progress        bool            `json:"progress"`
+	NoColor         bool            `json:"nocolor"`
+	SkipGeo         bool            `json:"skipgeo"`
+	URL             string          `json:"offurl"`
+	NSBURL          string          `json:"nsburl"`
+	DNS             string          `json:"dns"`
+	Debug           any             `json:"debug"`
+	CompactIPv4     bool            `json:"compactipv4"`
+	TestPort        int             `json:"offport"`
+	Delay           int             `json:"offdelay"`
+	NSBDelay        int             `json:"nsbdelay"`
+	DC              string          `json:"offdc"`
+	SpeedLimit      int             `json:"offspeedlimit"`
+	SpeedMin        float64         `json:"offspeedmin"`
+	File            string          `json:"nsbfile"`
+	SourceURL       string          `json:"nsbsourceurl"`
+	NSBFallbackPort int             `json:"nsbfallbackport"`
+	NSBDC           string          `json:"nsbdc"`
+	Relink          bool            `json:"relink"`
+	RelinkHost      string          `json:"relinkhost"`
+	Proxy           string          `json:"proxy"`
+	OutIPType       string          `json:"outiptype"`
+	OutQualified    string          `json:"outqualified"`
+	TLS             bool            `json:"nsbtls"`
+	Compact         bool            `json:"nsbcompact"`
+	ResultLimit     int             `json:"nsbresultlimit"`
+	NSBSpeedMin     float64         `json:"nsbspeedmin"`
+	NSBSpeedLimit   int             `json:"nsbspeedlimit"`
+	Format          string          `json:"outformat"`
+	Fields          string          `json:"outfields"`
+	Custom          string          `json:"outcustom"`
+	V6Bracket       bool            `json:"outv6bracket"`
+	Separator       string          `json:"outseparator"`
+	OutStartRow     int             `json:"outstartrow"`
+	OutEndRow       int             `json:"outendrow"`
+	GitHub          bool            `json:"github"`
+	GHRepo          string          `json:"ghrepo"`
+	GHBranch        string          `json:"ghbranch"`
+	GHPath          string          `json:"ghpath"`
+	GHMessage       string          `json:"ghmessage"`
+	GHToken         string          `json:"ghtoken"`
+	GHTokenFile     string          `json:"ghtokenfile"`
+	GHUpload        string          `json:"ghupload"`
+	EdgeTunnel      bool            `json:"edgetunnel"`
+	ETHost          string          `json:"ethost"`
+	ETPassword      string          `json:"etpassword"`
+	ETMode          string          `json:"etmode"`
+	Huawei          cliHuaweiConfig `json:"huaweiDNS"`
 }
 
 type cliResultRow map[string]string
@@ -331,6 +333,7 @@ func registerCLIFlags() *cliConfig {
 	flag.StringVar(&cfg.export.ETHost, "ethost", "", "edgetunnel 主机地址")
 	flag.StringVar(&cfg.export.ETPassword, "etpassword", "", "edgetunnel 密码")
 	flag.StringVar(&cfg.export.ETMode, "etmode", "overwrite", "edgetunnel 上传模式：overwrite 覆盖 / append 追加")
+	registerCLIHuaweiFlags(&cfg.huawei)
 	return cfg
 }
 
@@ -513,7 +516,7 @@ func validateCLIOutputConfig(cfg *cliConfig) error {
 	if cfg.endRow > 0 && cfg.endRow < cfg.startRow {
 		return fmt.Errorf("-outendrow 不能小于 -outstartrow")
 	}
-	return nil
+	return validateCLIHuaweiConfig(cfg)
 }
 
 func defaultCLIExportConfig() cliExportConfig {
@@ -521,7 +524,7 @@ func defaultCLIExportConfig() cliExportConfig {
 }
 
 func defaultCLIFileConfig() cliFileConfig {
-	return cliFileConfig{CLI: false, Mode: "official", ScanMode: "tcping", IPType: 4, Threads: 100, NSBThreads: 100, Out: "cfdata-results", SpeedTest: 0, Progress: true, NoColor: false, URL: autoSpeedURLValue, NSBURL: autoSpeedURLValue, DNS: defaultDNSServers, Debug: false, CompactIPv4: false, TestPort: 443, Delay: 500, NSBDelay: 0, DC: "", SpeedLimit: 5, SpeedMin: 0.1, File: "", SourceURL: "", NSBFallbackPort: 0, OutIPType: "all", OutQualified: "all", NSBDC: "", Relink: true, RelinkHost: "probe.609909.xyz", TLS: true, Compact: true, ResultLimit: 1000, NSBSpeedMin: 0.1, NSBSpeedLimit: 5, Format: "txt", Fields: "compact", Custom: "", V6Bracket: true, Separator: "-", OutStartRow: 1, OutEndRow: 20, GitHub: false, GHBranch: "main", GHPath: "", GHMessage: "update cfdata results", EdgeTunnel: false, ETMode: "overwrite"}
+	return cliFileConfig{CLI: false, Mode: "official", ScanMode: "tcping", IPType: 4, Threads: 100, NSBThreads: 100, Out: "cfdata-results", SpeedTest: 0, Progress: true, NoColor: false, URL: autoSpeedURLValue, NSBURL: autoSpeedURLValue, DNS: defaultDNSServers, Debug: false, CompactIPv4: false, TestPort: 443, Delay: 500, NSBDelay: 0, DC: "", SpeedLimit: 5, SpeedMin: 0.1, File: "", SourceURL: "", NSBFallbackPort: 0, OutIPType: "all", OutQualified: "all", NSBDC: "", Relink: true, RelinkHost: "probe.609909.xyz", TLS: true, Compact: true, ResultLimit: 1000, NSBSpeedMin: 0.1, NSBSpeedLimit: 5, Format: "txt", Fields: "compact", Custom: "", V6Bracket: true, Separator: "-", OutStartRow: 1, OutEndRow: 20, GitHub: false, GHBranch: "main", GHPath: "", GHMessage: "update cfdata results", EdgeTunnel: false, ETMode: "overwrite", Huawei: defaultCLIHuaweiConfig()}
 }
 
 func (c cliFileConfig) Export() cliExportConfig {
@@ -827,6 +830,7 @@ func buildCLIConfigHelp() []cliConfigHelp {
 }
 
 func applyCLIFileConfig(cfg *cliConfig, fileCfg cliFileConfig, provided map[string]bool) {
+	applyCLIHuaweiConfig(&cfg.huawei, fileCfg.Huawei, provided)
 	setString := func(name string, target *string, value string) {
 		if !provided[name] && strings.TrimSpace(value) != "" {
 			*target = value
@@ -1165,13 +1169,33 @@ func runOfficialCLI(cfg *cliConfig) error {
 	if cfg.speedMin <= 0 {
 		cfg.speedMin = 0.1
 	}
+	if err := validateCLIHuaweiConfig(cfg); err != nil {
+		return err
+	}
+	var dnsStore *huaweiDNSStore
+	if cfg.huawei.Enabled {
+		var err error
+		dnsStore, err = loadCLIHuaweiStore()
+		if err != nil {
+			return err
+		}
+		if cfg.huawei.EndRow > cfg.speedLimit {
+			fmt.Printf("[Huawei DNS] 测速达标上限 %d 小于结束排名 %d；只会使用实际测得的合格 IP，不保证填满\n", cfg.speedLimit, cfg.huawei.EndRow)
+		}
+	}
 
 	session := newCLISession(cfg)
 	scanResults, results, err := runOfficialCLIMeasurements(cfg, session, cliOfficialDependencies{Scan: runOfficialTask, Detail: runDetailedTest, Speed: runOfficialSpeedTests})
 	if err != nil {
 		return err
 	}
-	return writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scanResults, results, cfg.scanMode), cfg.speedMin), "official")
+	if err := writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scanResults, results, cfg.scanMode), cfg.speedMin), "official"); err != nil {
+		return err
+	}
+	if dnsStore != nil {
+		return updateCLIHuaweiDNS(context.Background(), dnsStore, cfg, results, confirmCLIHuaweiPreview)
+	}
+	return nil
 }
 
 func runNSBCLI(cfg *cliConfig) error {
@@ -1406,6 +1430,7 @@ func printCLIUsage() {
 	printCLIUsageGroup("通用参数", cliCommonFlags)
 	printCLIUsageGroup("官方模式参数", cliOfficialFlags)
 	printCLIUsageGroup("非标模式参数", cliNSBFlags)
+	printCLIUsageGroup("华为 DNS 参数（配置项保存在 huaweiDNS 对象，凭证单独加密保存）", cliHuaweiFlags)
 }
 
 func printCLIUsageGroup(title string, rows []cliFlagInfo) {

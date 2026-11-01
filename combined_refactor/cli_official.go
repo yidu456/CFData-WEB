@@ -48,7 +48,7 @@ func runOfficialCLIMeasurements(cfg *cliConfig, session *appSession, deps cliOff
 		return nil, nil, cliTaskError(err)
 	}
 	if taskErr != nil {
-		return nil, nil, cliTaskError(taskErr)
+		return nil, nil, fmt.Errorf("CLI 扫描已取消: %w", taskErr)
 	}
 	session.scanMutex.Lock()
 	scans := append([]ScanResult(nil), session.scanResults...)
@@ -96,7 +96,7 @@ func runOfficialCLIMeasurements(cfg *cliConfig, session *appSession, deps cliOff
 		return scans, nil, cliTaskError(err)
 	}
 	if taskErr != nil {
-		return scans, nil, cliTaskError(taskErr)
+		return scans, nil, fmt.Errorf("CLI 详细测试已取消: %w", taskErr)
 	}
 	session.testMutex.Lock()
 	results := append([]TestResult(nil), session.testResults...)
@@ -116,7 +116,7 @@ func runOfficialCLIMeasurements(cfg *cliConfig, session *appSession, deps cliOff
 			return scans, nil, cliTaskError(err)
 		}
 		if taskErr != nil {
-			return scans, nil, cliTaskError(taskErr)
+			return scans, nil, fmt.Errorf("CLI 测速已取消: %w", taskErr)
 		}
 	}
 	return scans, results, nil

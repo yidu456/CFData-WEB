@@ -61,7 +61,7 @@ if err != nil || !reflect.DeepEqual(centers, []string{"HKG", "NRT"}) {
 - `loadCLIHuaweiStore() (*huaweiDNSStore, error)` loads the private file and applies validated memory-only environment overrides.
 - `applyCLIHuaweiConfig` implements explicit command-line > nested file > defaults without persisting Confirmed.
 
-- [ ] Write failing selection tests with HKG/NRT interleaved by speed, below-threshold rounded measurements, IPv6/wrong-port/duplicate IPs, rank ranges, and empty selection; expected first ranks are derived by hand.
+- [x] Write failing selection tests with HKG/NRT interleaved by speed, below-threshold rounded measurements, IPv6/wrong-port/duplicate IPs, rank ranges, and empty selection; expected first ranks are derived by hand.
 
 ```go
 cfg.huawei.StartRow, cfg.huawei.EndRow = 1, 2
@@ -71,11 +71,11 @@ if err != nil || got[0].IP != "192.0.2.2" || got[1].IP != "192.0.2.3" {
 }
 ```
 
-- [ ] Write transport-backed tests for exact public-zone/record discovery, overwrite/append bodies, denied confirmation, empty selection, ambiguous targets, wrong family, stale cloud/config revision, cancellation, and unchanged no-op. Assert final records and absence of unintended mutation, not just mock call counts.
-- [ ] Run `go test -run 'TestCLIHuawei' -count=1` and observe RED.
-- [ ] Implement nested file config/defaults/flags (`huawei`, `hwzone`, `hwname`, `hwtype`, `hwline`, `hwmode`, `hwstartrow`, `hwendrow`, invocation-only `hwconfirm`) and early validation. Reject official-incompatible modes and disabled speed, invalid family/mode/ranges, partial credential overrides.
-- [ ] Publish from canonical final TestResults after export succeeds, independent of export row/qualification filters. Show old/new target/IP preview before asking; no confirmation or an empty qualified pool leaves DNS unchanged. Reuse store preview/update safety gates without Web-origin requirements in local CLI.
-- [ ] Run full tests/vet/builds; mark task complete and commit as `feat: publish ranked CLI results to Huawei DNS safely`.
+- [x] Write transport-backed tests for exact public-zone/record discovery, overwrite/append bodies, denied confirmation, empty selection, ambiguous targets, wrong family, stale cloud/config revision, cancellation, and unchanged no-op. Assert final records and absence of unintended mutation, not just mock call counts.
+- [x] Run `go test -run 'TestCLIHuawei' -count=1` and observe RED.
+- [x] Implement nested file config/defaults/flags (`huawei`, `hwzone`, `hwname`, `hwtype`, `hwline`, `hwmode`, `hwstartrow`, `hwendrow`, invocation-only `hwconfirm`) and early validation. Reject official-incompatible modes and disabled speed, invalid family/mode/ranges, partial credential overrides.
+- [x] Publish from canonical final TestResults after export succeeds, independent of export row/qualification filters. Show old/new target/IP preview before asking; no confirmation or an empty qualified pool leaves DNS unchanged. Reuse store preview/update safety gates without Web-origin requirements in local CLI.
+- [x] Run full tests/vet/builds; mark task complete and commit as `feat: publish ranked CLI results to Huawei DNS safely`.
 
 ## Task 3: Interactive Setup, Usage And End-To-End Regression
 
