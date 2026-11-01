@@ -25,11 +25,15 @@ type webPublishOptions struct {
 }
 type huaweiWebRequest struct {
 	huaweiConfigRequest
-	ZoneID    string `json:"zoneId"`
-	RecordID  string `json:"recordId"`
-	BatchID   uint64 `json:"batchId"`
-	Token     string `json:"token"`
-	Confirmed bool   `json:"confirmed"`
+	ZoneID    string   `json:"zoneId"`
+	RecordID  string   `json:"recordId"`
+	BatchID   uint64   `json:"batchId"`
+	Token     string   `json:"token"`
+	Confirmed bool     `json:"confirmed"`
+	IPs       []string `json:"ips"`
+	RequestID string   `json:"requestId"`
+	Mode      string   `json:"mode"`
+	Final     bool     `json:"final"`
 	webPublishOptions
 }
 
@@ -100,6 +104,7 @@ func (s *appSession) cancelWebPublication() {
 	if s.webPublishCancel != nil {
 		s.webPublishCancel()
 	}
+	s.dnsPreview = nil
 }
 
 func (s *appSession) claimWebPublication(id uint64, destination string, automatic bool, authorized func() bool) (webBatchSnapshot, error) {
@@ -156,7 +161,20 @@ func (s *appSession) publishStatus(destination string, id uint64, status, messag
 func (s *appSession) publishWebDNS(parent context.Context, store *huaweiDNSStore, id uint64, p *huaweiPreview, automatic bool, authorized func() bool) {
 	ctx, cancel := s.publicationContext(parent)
 	defer cancel()
-	batch, err := s.claimWebPublication(id, "dns", automatic, authorized)
+	manual := !automatic && id == 0 && p != nil && p.BatchID == 0 && p.manualSelection
+	var batch webBatchSnapshot
+	var err error
+	if manual {
+		// A consumed token must not outlive task/disconnect invalidation while queued.
+		s.taskMutex.Lock()
+		valid := !s.isTaskRunning && p.publicationContext != nil && p.publicationContext == s.webPublishContext && p.publicationContext.Err() == nil
+		s.taskMutex.Unlock()
+		if !valid || !huaweiPermission(authorized) {
+			err = errors.New("manual DNS preview invalidated; preview again when idle")
+		}
+	} else {
+		batch, err = s.claimWebPublication(id, "dns", automatic, authorized)
+	}
 	if err != nil {
 		s.publishStatus("dns", id, "denied", err.Error())
 		return
@@ -190,11 +208,16 @@ func (s *appSession) publishWebDNS(parent context.Context, store *huaweiDNSStore
 		if !huaweiPermission(authorized) {
 			return errors.New("DNS permission expired")
 		}
-		if _, err := s.completedWebBatchResults(id); err != nil {
-			return err
+		if !manual {
+			if _, err := s.completedWebBatchResults(id); err != nil {
+				return err
+			}
 		}
 		s.taskMutex.Lock()
 		defer s.taskMutex.Unlock()
+		if manual && (s.isTaskRunning || p.publicationContext != s.webPublishContext || p.publicationContext.Err() != nil) {
+			return errors.New("manual DNS preview invalidated; preview again when idle")
+		}
 		if s.dnsTarget == nil || s.dnsTarget.ID != p.Target.ID || s.dnsTarget.ZoneID != p.Target.ZoneID || s.dnsTarget.Name != p.Target.Name || s.dnsTarget.Type != p.Target.Type || s.dnsTarget.Line != p.Target.Line {
 			return errors.New("DNS selection changed; preview again")
 		}
@@ -283,8 +306,16 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 		return true
 	}
 	var req huaweiWebRequest
-	if len(data) > 16384 || json.Unmarshal(data, &req) != nil {
+	maxBytes := 16384
+	if action == "huawei_preview" {
+		maxBytes = 4 << 20
+	}
+	if len(data) > maxBytes || json.Unmarshal(data, &req) != nil {
 		fail(errors.New("invalid Huawei/publishing request"))
+		return true
+	}
+	if action == "huawei_preview" && req.RequestID != "" && !huaweiResourceIDPattern.MatchString(req.RequestID) {
+		fail(errors.New("preview request ID must be at most 128 ASCII letters, digits, underscores or hyphens"))
 		return true
 	}
 	reply := func(value interface{}) {
@@ -298,6 +329,7 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 			fail(err)
 		} else {
 			s.taskMutex.Lock()
+			s.invalidateWebPublicationLocked()
 			s.dnsZones, s.dnsRecords, s.dnsTarget, s.dnsPreview = nil, nil, nil, nil
 			s.webPublishOptions.DNS = false
 			s.taskMutex.Unlock()
@@ -320,6 +352,7 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 		}
 		if action == "huawei_legacy_migrate" {
 			s.taskMutex.Lock()
+			s.invalidateWebPublicationLocked()
 			s.dnsZones, s.dnsRecords, s.dnsTarget, s.dnsPreview = nil, nil, nil, nil
 			s.webPublishOptions.DNS = false
 			s.taskMutex.Unlock()
@@ -352,6 +385,11 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 	case "web_github_publish":
 		safeGo("web-github-publish", s, func() { s.publishWebGitHub(parent, req.BatchID, req.webPublishOptions, false, authorized) })
 	case "huawei_test", "huawei_zones", "huawei_records", "huawei_select", "huawei_preview":
+		if action == "huawei_preview" {
+			s.taskMutex.Lock()
+			s.invalidateWebPublicationLocked()
+			s.taskMutex.Unlock()
+		}
 		ctx, cancel := s.publicationContext(parent)
 		safeGo("huawei-read", s, func() {
 			defer cancel()
@@ -399,6 +437,7 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 				reply(records)
 			case "huawei_select":
 				s.taskMutex.Lock()
+				s.invalidateWebPublicationLocked()
 				s.dnsTarget = nil
 				s.dnsPreview = nil
 				for _, rec := range s.dnsRecords {
@@ -416,45 +455,110 @@ func handleHuaweiWebAction(parent context.Context, s *appSession, store *huaweiD
 				}
 				reply(*target)
 			case "huawei_preview":
-				if req.BatchID == 0 {
-					fail(errors.New("completed same-session batch required"))
+				if req.Mode != "" && req.Mode != "overwrite" && req.Mode != "append" {
+					fail(errors.New("choose overwrite or append"))
 					return
 				}
-				batch, err := s.completedWebBatchResults(req.BatchID)
-				if err != nil {
-					fail(err)
-					return
+				manual := req.BatchID == 0 && req.IPs != nil
+				var results []TestResult
+				if manual {
+					if len(req.IPs) == 0 || len(req.IPs) > 100000 {
+						fail(errors.New("select between 1 and 100000 bare IP addresses"))
+						return
+					}
+					for _, ip := range req.IPs {
+						addr, err := netip.ParseAddr(ip)
+						if err != nil || addr.Zone() != "" || addr.Is4In6() || addr.IsUnspecified() || addr.IsMulticast() {
+							fail(errors.New("selection must contain only valid bare IPv4/IPv6 addresses"))
+							return
+						}
+						results = append(results, TestResult{IP: ip})
+					}
+				} else {
+					if req.BatchID == 0 || req.IPs != nil {
+						fail(errors.New("use explicit IPs with batchId 0, or a completed same-session batch"))
+						return
+					}
+					batch, err := s.completedWebBatchResults(req.BatchID)
+					if err != nil {
+						fail(err)
+						return
+					}
+					results = batch.Results
 				}
 				s.taskMutex.Lock()
 				target := s.dnsTarget
+				running := s.isTaskRunning
 				s.taskMutex.Unlock()
+				if manual && running {
+					fail(errors.New("manual DNS selection requires an idle task"))
+					return
+				}
 				if target == nil {
 					fail(errors.New("select an existing A/AAAA record first"))
 					return
 				}
-				p, err := store.preview(ctx, *target, batch.Results)
+				p, err := store.preview(ctx, *target, results)
 				if err != nil {
 					fail(err)
 					return
+				}
+				if manual && req.Final {
+					if len(p.New) == 0 {
+						fail(errors.New("final IP list must match the selected record family"))
+						return
+					}
+					for _, row := range results {
+						if len(huaweiIPs([]TestResult{row}, target.Type)) == 0 {
+							fail(errors.New("final IP list must match the selected record family"))
+							return
+						}
+					}
+				} else if manual && req.Mode == "append" && len(p.New) > 0 {
+					rows := make([]TestResult, 0, len(p.Old)+len(p.New))
+					for _, ip := range append(append([]string(nil), p.Old...), p.New...) {
+						rows = append(rows, TestResult{IP: ip})
+					}
+					p.New = huaweiIPs(rows, target.Type)
+					p.Changed = !sameHuaweiIPSet(p.Old, p.New)
 				}
 				p.Token, err = newSessionToken()
 				if err != nil {
 					fail(errors.New("preview token unavailable"))
 					return
 				}
-				p.BatchID = batch.ID
+				p.BatchID, p.manualSelection = req.BatchID, manual
+				p.RequestID = req.RequestID
 				if ctx.Err() != nil {
 					fail(errors.New("preview invalidated"))
 					return
 				}
-				if _, err := s.completedWebBatchResults(batch.ID); err != nil {
-					fail(err)
-					return
+				if !manual {
+					if _, err := s.completedWebBatchResults(req.BatchID); err != nil {
+						fail(err)
+						return
+					}
 				}
 				s.taskMutex.Lock()
+				if ctx.Err() != nil || s.dnsTarget != target || (manual && s.isTaskRunning) || !huaweiPermission(authorized) {
+					s.taskMutex.Unlock()
+					fail(errors.New("preview invalidated"))
+					return
+				}
+				p.publicationContext = s.webPublishContext
 				s.dnsPreview = &p
 				s.taskMutex.Unlock()
 				reply(p)
+				s.wsMutex.Lock()
+				failedSend := s.emit == nil && (s.ws == nil || s.wsClosed)
+				s.wsMutex.Unlock()
+				if failedSend || ctx.Err() != nil {
+					s.taskMutex.Lock()
+					if s.dnsPreview == &p {
+						s.dnsPreview = nil
+					}
+					s.taskMutex.Unlock()
+				}
 			}
 		})
 	default:

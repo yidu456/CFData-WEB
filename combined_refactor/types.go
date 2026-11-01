@@ -66,17 +66,19 @@ type DataCenterInfo struct {
 }
 
 type ScanResult struct {
-	IP          string
-	Port        int
-	DataCenter  string
-	DCCountry   string
-	Region      string
-	City        string
-	LatencyStr  string
-	TCPDuration time.Duration
+	RecordedScanMode string `json:",omitempty"`
+	IP               string
+	Port             int
+	DataCenter       string
+	DCCountry        string
+	Region           string
+	City             string
+	LatencyStr       string
+	TCPDuration      time.Duration
 }
 
 type TestResult struct {
+	RecordedScanMode string `json:",omitempty"`
 	// Collection provenance survives retests and background replay after batch authority expires.
 	WebBatchDerived bool `json:"WebBatchDerived,omitempty"`
 	IP              string
@@ -235,6 +237,8 @@ type resetConfigResult struct {
 }
 
 type appSession struct {
+	retained             *retainedResultsStore
+	retainedGeneration   uint64
 	ws                   *websocket.Conn
 	emit                 func(msgType string, data interface{})
 	wsMutex              sync.Mutex

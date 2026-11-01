@@ -28,7 +28,7 @@ function fixture() {
     applyTheme(t) { state.appliedTheme = t; }, applyConfigValues(c) { state.appliedConfig = c; form = JSON.parse(JSON.stringify(c)); },
     mapCLIConfigToForm: c => c, readFormValues: () => JSON.parse(JSON.stringify(form)), renderGitHubAccounts() {}, renderEdgetunnelAccounts() {},
     resetLoadedPublishOptions() { state.resetCount = (state.resetCount || 0) + 1; },
-    handleHuaweiMessage() { return false; },
+    handleHuaweiMessage() { return false; }, handleRetainedMessage() { return false; },
     showNoticeCard: m => notices.push(m), log() {}, recordWebDebugError() {},
     localStorage: { getItem: k => legacy.get(k) ?? null, setItem() { throw Error('new browser persistence'); }, removeItem: k => legacy.delete(k) },
     githubAccountStorageKey: 'cfdata-github-accounts', edgetunnelAccountStorageKey: 'cfdata-edgetunnel-accounts',

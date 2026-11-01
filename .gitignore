@@ -41,6 +41,8 @@ ip.txt
 combined_refactor/cfdata-config.json
 huawei-dns.private
 web-state.private
+latest-results.json
+latest-results.json.tmp-*
 .huawei-private-*
 combined_refactor/ips-v4.txt
 combined_refactor/ips-v6.txt

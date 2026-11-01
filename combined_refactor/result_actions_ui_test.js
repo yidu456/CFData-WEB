@@ -13,19 +13,24 @@ const elements = {};
 let focused;
 for (const id of ['resultModalMask', 'resultModalTitle', 'resultFormat', 'resultFileName', 'resultIPTypeFilterField', 'resultIPTypeFilter', 'resultQualifiedFilterField', 'resultQualifiedFilter', 'resultExportChoice', 'resultGitHubChoice', 'resultEdgetunnelChoice', 'resultHuaweiChoice', 'resultBack', 'githubAccountSelect', 'settingsMenu', 'settingsToggle', 'huaweiModalMask', 'huaweiAK', 'huaweiSK', 'huaweiBack', 'huaweiConfigStatus', 'huaweiSaveEncrypted', 'huaweiSaveStatus', 'noticeCardMask', 'huaweiDiscoveryStatus', 'huaweiDNSStatus', 'huaweiConfirm', 'huaweiRegion', 'huaweiProjectID', 'huaweiPrivatePath', 'huaweiLegacyStatus', 'huaweiLegacyMigrate', 'huaweiLegacyCleanup']) {
   const classes = new Set();
-  elements[id] = { value: '', style: {}, dataset: {}, textContent: '', focus() { focused = id; }, classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) } };
+  const attributes = new Map();
+  elements[id] = { value: '', style: {}, dataset: {}, textContent: '', focus() { focused = id; },
+    setAttribute: (name, value) => attributes.set(name, value), removeAttribute: name => attributes.delete(name), getAttribute: name => attributes.get(name),
+    classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, active) { if (active) classes.add(c); else classes.delete(c); } } };
 }
 const sent = [], notices = [];
 const opener = { focus() { focused = 'opener'; } };
 const ctx = vm.createContext({
-  document: { activeElement: opener, getElementById: id => elements[id] },
+  document: { activeElement: opener, getElementById: id => elements[id], body: { classList: { toggle() {} } } }, window: { scrollTo() {} },
   currentMode: 'official', resultModalMode: 'scan', resultFieldOrder: ['ipport'], resultReturnFocus: null,
+  providerView: '', providerDrafts: new Map(), captureResultDraft: () => ({}), restoreResultDraft() {},
   huaweiFromResult: false, resultHuaweiLoaded: false, resultHuaweiLoading: false,
   getCurrentResultRows: () => [], getDefaultResultFieldOrder: () => ['ipport'],
-  renderGitHubAccounts() {}, renderResultFieldOptions() {},
+  renderGitHubAccounts() {}, renderResultFieldOptions() {}, updateHuaweiSelection() {},
   showNoticeCard: text => notices.push(text), wsSend: payload => { sent.push(payload); return true; }, escapeHTML: text => text,
 });
 vm.runInContext(extract('openResultModal'), ctx);
+vm.runInContext(extract('setProviderPage'), ctx);
 if (html.includes('        function showResultActionView(')) vm.runInContext(extract('showResultActionView'), ctx);
 vm.runInContext('openResultModal("test")', ctx);
 assert.equal(elements.resultModalMask.classList.contains('active'), true, 'empty results must still open the destination chooser');
@@ -33,6 +38,10 @@ assert.equal(ctx.resultModalMode, 'test');
 for (const name of ['showResultActionView', 'closeResultModal', 'openHuaweiPanel', 'closeHuaweiPanel', 'loadHuaweiConfig', 'handleResultDialogKey', 'handleHuaweiMessage']) vm.runInContext(extract(name), ctx);
 vm.runInContext('showResultActionView("github")', ctx);
 assert.equal(elements.resultModalMask.dataset.view, 'github');
+assert.equal(ctx.providerView, 'github');
+assert.equal(elements.resultModalMask.classList.contains('provider-page'), true);
+assert.equal(elements.resultModalMask.getAttribute('role'), 'region', 'provider navigation must open a page region, not a modal dialog');
+assert.equal(elements.resultModalMask.getAttribute('aria-modal'), undefined);
 elements.resultFileName.value = 'keep-name';
 elements.resultFormat.value = 'csv';
 vm.runInContext('showResultActionView("chooser");showResultActionView("edgetunnel");showResultActionView("chooser")', ctx);
@@ -46,6 +55,10 @@ ctx.wsSend = payload => { sent.push(payload); return true; };
 vm.runInContext('showResultActionView("huawei")', ctx);
 assert.equal(elements.resultModalMask.classList.contains('active'), false);
 assert.equal(elements.huaweiModalMask.classList.contains('active'), true);
+assert.equal(ctx.providerView, 'huawei');
+assert.equal(elements.huaweiModalMask.classList.contains('provider-page'), true);
+assert.equal(elements.huaweiModalMask.getAttribute('role'), 'region');
+assert.equal(elements.huaweiModalMask.getAttribute('aria-modal'), undefined);
 assert.deepEqual(sent.map(p => p.type), ['huawei_config_get'], 'navigation must only read basic config');
 assert.equal(ctx.resultHuaweiLoaded, false, 'sending alone must not claim loaded configuration');
 vm.runInContext('handleHuaweiMessage({type:"huawei_response",data:{action:"huawei_config_get",data:{regions:["cn-north-4"],projectId:"0123456789abcdef0123456789abcdef"}}})', ctx);
@@ -59,11 +72,14 @@ assert.equal(elements.huaweiSK.value, 'unsaved-secret');
 assert.equal(sent.length, 1, 're-entering must not reload over unsaved config');
 vm.runInContext('closeHuaweiPanel()', ctx);
 assert.equal(focused, 'resultHuaweiChoice');
+assert.equal(ctx.providerView, '');
+assert.equal(elements.huaweiModalMask.classList.contains('provider-page'), false);
 vm.runInContext('showResultActionView("export");handleResultDialogKey({key:"Escape",preventDefault(){}})', ctx);
 assert.equal(elements.resultModalMask.dataset.view, 'chooser');
 assert.equal(focused, 'resultExportChoice');
 vm.runInContext('handleResultDialogKey({key:"Escape",preventDefault(){}})', ctx);
 assert.equal(elements.resultModalMask.classList.contains('active'), false);
+assert.equal(ctx.providerView, '');
 assert.equal(focused, 'opener');
 assert.equal(elements.huaweiAK.value, '');
 assert.equal(elements.huaweiSK.value, '');

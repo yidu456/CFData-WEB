@@ -38,6 +38,10 @@ func safeGo(label string, session *appSession, fn func()) {
 }
 
 func (s *appSession) sendWSMessage(msgType string, data interface{}) {
+	if s.retained != nil {
+		data = s.retained.annotate(s, msgType, data)
+		s.retained.record(s, msgType, data)
+	}
 	updatedBackground := false
 	if s.emit == nil {
 		s.updateBackgroundSnapshotFromMessage(msgType, data)
@@ -95,12 +99,28 @@ func (s *appSession) startTask(run taskStarter) {
 }
 
 func (s *appSession) startTaskNamed(label string, mode string, params map[string]interface{}, run taskStarter) {
+	initial := label == "官方优选扫描" || label == "非标优选"
 	ctx, cancel := context.WithCancel(context.Background())
 	started := s.beginTask(cancel, label, mode, params)
 	if !started {
 		cancel()
-		s.sendWSMessage("error", "已有任务正在运行，请等待完成后再试")
+		if s.retained != nil {
+			s.sendWSMessageDirect("retained_results_error", map[string]interface{}{"message": "已有任务正在运行，请等待完成后再试", "code": "busy", "admission": true, "initial": initial})
+		} else {
+			s.sendWSMessage("error", "已有任务正在运行，请等待完成后再试")
+		}
 		return
+	}
+	if s.retained != nil && (initial || label == "官方详细测试" || label == "单 IP 测速" || label == "官方批量测速" || label == "非标批量测速" || label == "链路复验" || label == "多数据中心测试") {
+		if err := s.retained.begin(s, initial, mode, params); err != nil {
+			s.endTask()
+			cancel()
+			s.sendWSMessageDirect("retained_results_error", map[string]interface{}{"message": err.Error(), "admission": true, "initial": initial})
+			return
+		}
+		if initial {
+			s.sendWSMessageDirect("retained_results_started", map[string]interface{}{"generation": s.retainedGeneration, "mode": mode})
+		}
 	}
 	s.sendWSMessage("web_batch_invalidated", nil)
 	safeGo("task", s, func() {
@@ -211,6 +231,11 @@ func (s *appSession) beginTask(cancel context.CancelFunc, label string, mode str
 }
 
 func (s *appSession) endTask() {
+	if s.retained != nil {
+		if err := s.retained.finish(s); err != nil {
+			s.sendWSMessageDirect("retained_results_error", map[string]interface{}{"message": err.Error()})
+		}
+	}
 	globalTaskMutex.Lock()
 	defer globalTaskMutex.Unlock()
 	s.taskMutex.Lock()

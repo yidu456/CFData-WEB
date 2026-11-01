@@ -22,10 +22,12 @@ type startTaskRequest struct {
 }
 
 type startTestRequest struct {
-	DC       string `json:"dc"`
-	Port     int    `json:"port"`
-	Delay    int    `json:"delay"`
-	ScanMode string `json:"scanMode"`
+	Datacenters []string `json:"datacenters"`
+	Manual      bool     `json:"manual"`
+	DC          string   `json:"dc"`
+	Port        int      `json:"port"`
+	Delay       int      `json:"delay"`
+	ScanMode    string   `json:"scanMode"`
 }
 
 type startSpeedTestRequest struct {
@@ -35,12 +37,13 @@ type startSpeedTestRequest struct {
 }
 
 type startOfficialSpeedBatchRequest struct {
-	Port       int          `json:"port"`
-	URL        string       `json:"url"`
-	SpeedMin   float64      `json:"speedMin"`
-	SpeedLimit int          `json:"speedLimit"`
-	Results    []TestResult `json:"results"`
-	SkipTested bool         `json:"skipTested"`
+	Datacenters []string     `json:"datacenters,omitempty"`
+	Port        int          `json:"port"`
+	URL         string       `json:"url"`
+	SpeedMin    float64      `json:"speedMin"`
+	SpeedLimit  int          `json:"speedLimit"`
+	Results     []TestResult `json:"results"`
+	SkipTested  bool         `json:"skipTested"`
 }
 
 type startNSBTaskRequest struct {

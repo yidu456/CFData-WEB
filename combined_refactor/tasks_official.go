@@ -453,10 +453,21 @@ func runOfficialTask(ctx context.Context, session *appSession, ipType int, scanM
 	session.sendWSMessage("scan_complete_wait_dc", dcList)
 }
 
-func runDetailedTest(ctx context.Context, session *appSession, selectedDC string, port int, delay int, scanMode string) {
+func runDetailedTest(ctx context.Context, session *appSession, selectedDC string, port int, delay int, scanMode string, quiet ...bool) {
 	session.testMutex.Lock()
-	session.testResults = nil
+	previous := append([]TestResult(nil), session.testResults...)
+	if len(quiet) == 0 {
+		previous = nil
+		session.testResults = nil
+	}
 	session.testMutex.Unlock()
+	failure := func(message string) {
+		kind := "error"
+		if len(quiet) > 0 && quiet[0] {
+			kind = "log"
+		}
+		session.sendWSMessage(kind, message)
+	}
 	var testIPList []string
 	scanByIP := make(map[string]ScanResult)
 	session.scanMutex.Lock()
@@ -470,9 +481,9 @@ func runDetailedTest(ctx context.Context, session *appSession, selectedDC string
 
 	if len(testIPList) == 0 {
 		if strings.TrimSpace(selectedDC) == "" {
-			session.sendWSMessage("error", "没有找到可测试的 IP 地址")
+			failure("没有找到可测试的 IP 地址")
 		} else {
-			session.sendWSMessage("error", fmt.Sprintf("数据中心 %s 未找到可测试的 IP 地址", selectedDC))
+			failure(fmt.Sprintf("数据中心 %s 未找到可测试的 IP 地址", selectedDC))
 		}
 		return
 	}
@@ -542,14 +553,28 @@ func runDetailedTest(ctx context.Context, session *appSession, selectedDC string
 		return
 	}
 	if len(results) == 0 {
-		session.sendWSMessage("error", "详细测试完成，但没有任何 IP 通过延迟测试。")
+		failure("详细测试完成，但没有任何 IP 通过延迟测试。")
 		return
 	}
 
 	sortOfficialTestResults(results)
 
 	session.testMutex.Lock()
-	session.testResults = append([]TestResult(nil), results...)
+	positions := make(map[string]int)
+	for i, row := range previous {
+		positions[net.JoinHostPort(row.IP, strconv.Itoa(row.Port))] = i
+	}
+	for _, row := range results {
+		key := net.JoinHostPort(row.IP, strconv.Itoa(row.Port))
+		if i, ok := positions[key]; ok {
+			row.Speed, row.MeasuredSpeedMB, row.SpeedMeasured = previous[i].Speed, previous[i].MeasuredSpeedMB, previous[i].SpeedMeasured
+			previous[i] = row
+		} else {
+			positions[key] = len(previous)
+			previous = append(previous, row)
+		}
+	}
+	session.testResults = previous
 	session.testMutex.Unlock()
 
 	session.sendWSMessage("test_complete", results)

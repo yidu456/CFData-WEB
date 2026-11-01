@@ -1745,6 +1745,32 @@
         *:focus {
             outline: none;
         }
+        body.provider-page-open > .container { display: none; }
+        .modal-mask.provider-page.active {
+            position: relative;
+            inset: auto;
+            display: block;
+            padding: 0;
+            background: transparent;
+            backdrop-filter: none;
+        }
+        .provider-page > .result-modal {
+            width: 100%;
+            max-width: 1100px;
+            max-height: none;
+            margin: 0 auto;
+        }
+        .provider-page .modal-body { max-height: none; overflow: visible; }
+        .provider-page .modal-grid > * { min-width: 0; }
+        .provider-page .result-preview { overflow-wrap: anywhere; white-space: pre-wrap; }
+        #huaweiPreview, #huaweiSelection, #huaweiTarget { user-select: text; -webkit-user-select: text; }
+        .provider-page .modal-head h3 { min-width: 0; }
+        .retained-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+        #retainedStatus { flex: 1; min-width: 160px; margin: 0; overflow-wrap: anywhere; }
+        @media (max-width: 600px) {
+            .provider-page .modal-head { flex-wrap: wrap; }
+            .provider-page .modal-head h3 { font-size: 18px; }
+        }
     </style>
     <script>
     (function(){
@@ -2078,6 +2104,10 @@
 
             <button id="btnStart" class="btn" onclick="startTask()"><span id="btnStartSpinner"
                     class="hidden"></span><span id="btnStartLabel">✨ 开始扫描与测试</span></button>
+            <div class="retained-toolbar">
+                <div id="retainedStatus" class="upload-status" role="status" aria-live="polite">正在读取上次结果…</div>
+                <button class="action-btn" id="btnClearRetained" onclick="clearRetainedResults()">清空结果</button>
+            </div>
             <button id="btnRunInBackground" class="action-btn export-btn" onclick="runTaskInBackground()" style="display:none;margin-top:10px;">🕘 转入后台运行</button>
             <div class="background-status-card background-confirm-card" id="backgroundConfirmCard">
                 <div class="background-status-title">确认转入后台运行？</div>
@@ -2125,7 +2155,7 @@
                         style="margin-left:10px;font-size:12px;color:var(--text-secondary);"></span>
                 </h3>
                 <div class="table-actions" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;">
-                    <button class="action-btn export-btn" id="btnWebBatch" onclick="startWebBatch()" disabled>测试已选数据中心</button>
+                    <button class="action-btn export-btn" id="btnWebBatch" onclick="startWebBatch()" disabled>加入详细测试</button>
                     <span id="webBatchSelection" role="status" aria-live="polite">已选 0 个数据中心</span>
                 </div>
                 <div class="scroll-table">
@@ -2181,6 +2211,10 @@
         <div id="test" class="tab-content">
             <div class="section-box">
                 <p id="webBatchSummary" role="status" aria-live="polite" style="color:var(--text-secondary);"></p>
+                <div class="table-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+                    <button class="action-btn export-btn" id="btnDetailLatency" onclick="startDetailLatency()">开始延迟测试（二次测试）</button>
+                    <details><summary>高级自动流程（可选）</summary><button class="action-btn" onclick="startAutomaticWebBatch()">所选中心自动延迟测试＋测速＋发布</button></details>
+                </div>
                 <h3 style="display:flex;justify-content:space-between;align-items:center;">
                     <span>详细测试结果 <span class="badge" id="testCount">0</span></span>
                     <span class="table-actions">
@@ -2424,7 +2458,7 @@
         <div class="result-modal">
             <div class="modal-head">
                 <button class="action-btn" id="huaweiBack" onclick="closeHuaweiPanel()" hidden>返回结果操作</button>
-                <h3 id="huaweiPanelTitle">华为云 DNS · 多中心结果发布</h3>
+                <h3 id="huaweiPanelTitle">更新华为云 DNS</h3>
                 <button class="modal-close" onclick="closeHuaweiPanel()" aria-label="关闭华为云 DNS 面板">×</button>
             </div>
             <div class="modal-body">
@@ -2461,10 +2495,19 @@
                 </section>
                 <section class="huawei-section" id="huaweiUpdateSection" aria-labelledby="huaweiUpdateTitle">
                     <h4 id="huaweiUpdateTitle">3. 预览与更新</h4>
-                    <p class="section-intro">预览使用服务端已完成批次的最终排名快照；浏览器不提交自选 IP。只有再次明确确认才更新所选记录值。</p>
-                    <div class="modal-field full"><label>服务端最终排名快照 · 旧 / 新 IP</label><pre class="result-preview" id="huaweiPreview">完成多中心测试后预览；无对应地址族时保留原记录</pre></div>
+                    <div class="modal-field full"><label for="huaweiUpdateMode">更新方式</label><select id="huaweiUpdateMode" onchange="changeHuaweiMode()"><option value="overwrite">覆盖现有 IP</option><option value="append">追加 IP（保留已有 IP 并去重）</option></select></div>
+                    <p class="section-intro">使用当前结果顺序，筛选后按行范围选择；不限制数据中心，也没有固定前 10 条限制。仅匹配所选 A / AAAA 地址族，确认前不更新 DNS。</p>
+                    <div class="modal-field"><label for="huaweiStartRow">开始行</label><input id="huaweiStartRow" type="number" min="1" value="1" oninput="updateHuaweiSelection()"></div>
+                    <div class="modal-field"><label for="huaweiEndRow">结束行（从第 1 行到第 10 行即前 10 条）</label><input id="huaweiEndRow" type="number" min="1" value="10" oninput="updateHuaweiSelection()"></div>
+                    <div class="modal-field"><label for="huaweiIPTypeFilter">IP 类型</label><select id="huaweiIPTypeFilter" onchange="updateHuaweiSelection()"><option value="all">全部</option><option value="ipv4">仅 IPv4</option><option value="ipv6">仅 IPv6</option></select></div>
+                    <div class="modal-field"><label for="huaweiQualifiedFilter">结果筛选</label><select id="huaweiQualifiedFilter" onchange="updateHuaweiSelection()"><option value="all">全部结果</option><option value="qualified">仅合格</option><option value="unqualified">仅不合格</option></select></div>
+                    <div class="modal-field"><label for="huaweiLatencyFilter">延迟低于（毫秒，0=不限制）</label><input id="huaweiLatencyFilter" type="number" min="0" value="0" oninput="updateHuaweiSelection()"></div>
+                    <div class="modal-field"><label for="huaweiLossFilter">丢包低于（%，100=不限制）</label><input id="huaweiLossFilter" type="number" min="0" max="100" value="100" oninput="updateHuaweiSelection()"></div>
+                    <div class="modal-field full"><label>当前选择（沿用结果排序）</label><pre class="result-preview" id="huaweiSelection">暂无结果</pre></div>
+                    <div class="modal-field full"><label for="huaweiNewIPs">更新后的 IP（每行一个，可自由新增、删改、复制粘贴）</label><textarea id="huaweiNewIPs" class="result-preview" rows="8" oninput="editHuaweiIPs()" spellcheck="false"></textarea><div class="modal-actions"><button class="action-btn" onclick="copyHuaweiIPs(event)">复制 IP 列表</button><button class="action-btn" onclick="reloadHuaweiDraft()">重新从当前结果生成</button></div><p class="section-intro">编辑后点击“校验并预览”；不会自动恢复已删除的 IP，删空不会清空 DNS。</p></div>
+                    <div class="modal-field full"><label>服务端确认预览 · 旧 / 新 IP</label><pre class="result-preview" id="huaweiPreview">选择结果并生成预览；无对应地址族时保留原记录</pre></div>
                     <div class="modal-field full"><label class="inline-check"><input id="huaweiAuto" type="checkbox" onchange="saveWebPublishOptions()"> 下次多中心测试完成后自动更新此记录集</label><p class="section-intro">这是显式选择：每批最多自动尝试一次；失败、取消、未完成、空结果保持旧记录，重连不重放写入。</p></div>
-                    <div class="modal-field full"><div class="modal-actions footer"><button class="action-btn" onclick="previewHuaweiDNS()">预览完成批次</button><button class="action-btn export-btn" id="huaweiConfirm" onclick="confirmHuaweiDNS()" disabled>确认更新 DNS</button></div><div class="upload-status" id="huaweiDNSStatus" role="status" aria-live="polite">尚未预览或更新</div></div>
+                    <div class="modal-field full"><div class="modal-actions footer"><button class="action-btn" onclick="previewHuaweiDNS()">校验并预览 IP 列表</button><button class="action-btn export-btn" id="huaweiConfirm" onclick="confirmHuaweiDNS()" disabled>确认更新 DNS</button></div><div class="upload-status" id="huaweiDNSStatus" role="status" aria-live="polite">尚未预览或更新</div></div>
                 </section>
             </div>
         </div>
@@ -2699,6 +2742,7 @@
         let webDebugMode = false;
         let webDebugErrors = [];
         let currentSpeedTestingIP = '';
+        let currentSpeedTestingPort = 0;
         let runningTaskLabel = '';
         let runningTaskMode = '';
         let runningTaskTab = 'scan';
@@ -2743,6 +2787,25 @@
         let webStateGenerations = {};
         let serverConfigLoadIntents = [];
         let pendingSavedWebDCs = new Set();
+        let retainedGeneration = 0;
+        let retainedHydrating = false;
+        let retainedViewTimer = null;
+        let pendingInitialScan = '';
+        let retainedSort = { official: [], nsb: [] };
+        let providerView = '';
+        const providerDrafts = new Map();
+        let huaweiResultMode = 'scan';
+        let huaweiPreviewSelection = '';
+        let huaweiPreviewRequestID = '';
+        let huaweiPreviewSequence = 0;
+        let retainedParams = {};
+        let retainedTestIndex = new Map();
+        let retainedTestArray = null;
+        let retainedTestLength = 0;
+        let activeDetailCenters = null;
+        let manualDetailRunning = false;
+        let huaweiDraftEdited = false;
+        let huaweiTargetRecords = [];
 
         const LATENCY_COLORS = [
             { end: 50, color: '#1f8a3b' },
@@ -3148,14 +3211,16 @@
             }
             if (o.speedUrl) applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', o.speedUrl);
             if (n.speedUrl) applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', n.speedUrl);
-            if (Array.isArray(config.selectedDatacenters)) {
+            if (Array.isArray(config.selectedDatacenters) && !retainedGeneration) {
                 pendingSavedWebDCs = new Set(config.selectedDatacenters.filter(dc => /^[A-Z]{3}$/.test(dc)));
                 selectedWebDCs = new Set([...pendingSavedWebDCs].filter(dc => dcList.some(item => item.DataCenter === dc)));
                 if (dcList.length) pendingSavedWebDCs.clear();
                 updateWebBatchSelection();
             }
-            syncOfficialSpeedConfigState();
-            syncNSBSpeedConfigState();
+            if (!retainedGeneration) {
+                syncOfficialSpeedConfigState();
+                syncNSBSpeedConfigState();
+            }
             updateOfficialAutoSpeedControls();
             updateNSBSpeedControls();
             updateNSBCompactToggle();
@@ -3468,7 +3533,150 @@
             if (wsSend({ type: 'get_config' })) serverConfigLoadIntents.push({ explicit: true, generation });
         }
 
+        function mergeRetainedTests(rows) {
+            if (retainedTestArray !== testData || retainedTestLength !== testData.length) {
+                retainedTestIndex = new Map(testData.map((row, index) => [`${row.IP}:${row.Port}`, index]));
+                retainedTestArray = testData;
+            }
+            for (const row of rows || []) {
+                const key = `${row.IP}:${row.Port}`;
+                if (retainedTestIndex.has(key)) {
+                    const index = retainedTestIndex.get(key);
+                    testData[index] = row.Speed ? row : { ...row, Speed: testData[index].Speed, ExactSpeed: testData[index].ExactSpeed, BatchQualified: row.BatchQualified ?? testData[index].BatchQualified };
+                }
+                else { retainedTestIndex.set(key, testData.length); testData.push(row); }
+            }
+            retainedTestLength = testData.length;
+        }
+
+        function resetRetainedDisplay(mode) {
+            activeDetailCenters = null;
+            manualDetailRunning = false;
+            scanData = []; testData = []; dcList = [];
+            nsbHeaders = []; nsbRows = []; nsbLiveRows = []; nsbLiveIndex = {}; nsbLiveRowElements = {};
+            selectedWebDCs.clear(); testedDCs.clear(); pendingSavedWebDCs.clear(); currentTestingDC = '';
+            completedWebBatch = null; webBatchDerivedResults = false;
+            retainedSort = { official: [], nsb: [] };
+            clearHuaweiPreview();
+            document.querySelector('#scanTable tbody').innerHTML = '';
+            document.querySelector('#testTable tbody').innerHTML = '';
+            document.querySelector('#testTable tbody').innerHTML = '';
+            document.querySelector('#dcTable tbody').innerHTML = '';
+            document.getElementById('dcSection').style.display = 'none';
+            document.getElementById('currentTestDC').textContent = '';
+            scanResultsCount = 0; testResultsCount = 0;
+            for (const id of ['scanCount', 'testCount', 'dcCount']) updateBadge(id, 0);
+            renderScanHeaders(mode);
+            updateWebBatchSelection();
+        }
+
+        function handleRetainedMessage(msg) {
+            if (!msg.type.startsWith('retained_results')) return false;
+            const p = msg.data || {};
+            const status = document.getElementById('retainedStatus');
+            if (msg.type === 'retained_results_error') {
+                const admissionFailed = pendingInitialScan || p.admission || p.code === 'busy' || p.code === 'stale';
+                pendingInitialScan = '';
+                if (admissionFailed && !backgroundTaskActive) { manualDetailRunning = false; finishRunningTask('✨ 开始扫描与测试'); }
+                status.textContent = p.message || '保存或读取失败；当前结果保留，请勿清空或重新扫描';
+                if (p.code === 'stale') wsSend({ type: 'retained_results_get' });
+                return true;
+            }
+            if (msg.type === 'retained_results_saved') {
+                if (p.generation === retainedGeneration) status.textContent = p.saved ? '上次结果已保存；切换页面、刷新和重启均可继续使用' : '结果尚未保存；请保持程序运行';
+                return true;
+            }
+            if (msg.type === 'retained_results_started') {
+                retainedGeneration = p.generation;
+                pendingInitialScan = '';
+                retainedHydrating = true;
+                resetRetainedDisplay(p.mode);
+                retainedHydrating = false;
+                status.textContent = '新扫描已接受，旧结果已替换；本轮结果自动保存';
+                return true;
+            }
+            if (msg.type !== 'retained_results') return true;
+            if (isTaskRunning && !pendingInitialScan) return true;
+            retainedHydrating = true;
+            retainedGeneration = p.generation || 0;
+            retainedParams = p.params || {};
+            const v = p.view || {};
+            activeDetailCenters = Array.isArray(v.activeCenters) ? new Set(v.activeCenters) : null;
+            scanData = p.scans || []; testData = p.tests || []; dcList = p.centers || [];
+            for (const row of testData) {
+                const measurement = p.testMeasurements?.[`${row.IP}\u0000${row.Port}`];
+                if (measurement) row.ExactSpeed = measurement;
+            }
+            nsbHeaders = p.nsbCSV?.headers || []; nsbRows = p.nsbCSV?.rows || [];
+            nsbLiveRows = p.nsbLive || []; rebuildNSBLiveIndex(); nsbLiveRowElements = {};
+            selectedWebDCs = new Set(v.selectedCenters || []);
+            testedDCs = new Set(v.testedCenters || []);
+            currentTestingDC = '';
+            pendingSavedWebDCs.clear();
+            completedWebBatch = null;
+            webBatchDerivedResults = testData.some(row => row.WebBatchDerived);
+            officialTestQualifiedFilter = v.officialQualified || 'all';
+            officialTestLatencyFilter = v.officialLatency || 0;
+            officialTestLossFilter = v.officialLoss ?? 100;
+            nsbTableQualifiedFilter = v.nsbQualified || 'all';
+            nsbTableIPTypeFilter = v.nsbIPType || 'all';
+            nsbTableLatencyFilter = v.nsbLatency || 0;
+            nsbTableLossFilter = v.nsbLoss ?? 100;
+            officialSpeedMinValue = v.officialSpeedMin ?? 0.1;
+            nsbSpeedMinValue = v.nsbSpeedMin || 0;
+            officialSpeedEnabledForResults = v.officialSpeedEnabled ?? testData.some(row => row.Speed);
+            nsbSpeedEnabledForResults = v.nsbSpeedEnabled ?? nsbLiveRows.some(row => row.speed);
+            officialContinueSpeedUnlocked = officialSpeedEnabledForResults;
+            nsbContinueSpeedUnlocked = nsbSpeedEnabledForResults;
+            nsbCompactView = v.nsbCompact ?? true;
+            document.getElementById('nsbCompactView').value = nsbCompactView ? 'compact' : 'full';
+            retainedSort = { official: v.officialSort || [], nsb: v.nsbSort || [] };
+            switchMode(v.mode || p.mode || 'official');
+            showDCSelection(dcList);
+            if (retainedSort.official.length) applyOfficialTestSort(retainedSort.official);
+            if (retainedSort.nsb.length) applyNSBSort(retainedSort.nsb);
+            switchTab(v.activeTab === 'test' ? 'test' : 'scan');
+            clearHuaweiPreview();
+            retainedHydrating = false;
+            const count = scanData.length + testData.length + (nsbRows.length || nsbLiveRows.length);
+            status.textContent = p.error || (count ? `已恢复上次结果（${count} 条）；可继续测试、复制、导出或上传` : '暂无保存结果；开始扫描后自动保存');
+            if (count && retainedParams.scanMode) status.textContent += `；上次扫描模式 ${retainedParams.scanMode === 'httping' ? 'HTTPing' : 'TCPing'}`;
+            return true;
+        }
+
+        function saveRetainedView() {
+            clearTimeout(retainedViewTimer);
+            if (retainedHydrating || !retainedGeneration || pendingInitialScan) return;
+            wsSend({ type: 'retained_results_view', data: { generation: retainedGeneration, view: {
+                mode: currentMode, activeTab: document.getElementById('test').classList.contains('active') ? 'test' : 'scan',
+                selectedCenters: [...selectedWebDCs], testedCenters: [...testedDCs], currentDC: currentTestingDC,
+                ...(activeDetailCenters ? { activeCenters: [...activeDetailCenters] } : {}),
+                officialSort: retainedSort.official, nsbSort: retainedSort.nsb,
+                officialQualified: officialTestQualifiedFilter, nsbQualified: nsbTableQualifiedFilter, nsbIPType: nsbTableIPTypeFilter,
+                officialLatency: officialTestLatencyFilter, nsbLatency: nsbTableLatencyFilter,
+                officialLoss: officialTestLossFilter, nsbLoss: nsbTableLossFilter,
+                officialSpeedMin: officialSpeedMinValue, nsbSpeedMin: nsbSpeedMinValue,
+                officialSpeedEnabled: officialSpeedEnabledForResults, nsbSpeedEnabled: nsbSpeedEnabledForResults, nsbCompact: nsbCompactView,
+            } } });
+        }
+
+        function scheduleRetainedView() {
+            if (retainedHydrating || pendingInitialScan) return;
+            clearTimeout(retainedViewTimer);
+            retainedViewTimer = setTimeout(saveRetainedView, 150);
+        }
+
+        function clearRetainedResults() {
+            if (isTaskRunning || pendingInitialScan) return showNoticeCard('请先停止当前任务，再清空结果');
+            showConfirmCard('清空扫描、数据中心选择和测试结果？此操作会替换程序保存的上次结果。', () => {
+                if (!wsSend({ type: 'retained_results_clear', data: { generation: retainedGeneration } })) showNoticeCard('连接未就绪；结果未清空');
+            }, '清空结果');
+        }
+
         function wsSend(payload) {
+            if (['start_task', 'start_nsb_task', 'start_test', 'start_speed_test', 'start_official_speed_batch', 'start_nsb_speed_batch', 'start_nsb_reallink', 'start_web_batch'].includes(payload.type)) {
+                payload = { ...payload, data: { ...payload.data, generation: retainedGeneration } };
+            }
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 recordWebDebugError('ws_send', 'WebSocket 未连接');
                 return false;
@@ -3567,17 +3775,20 @@
                 log('已连接服务器');
                 initThemeFromStorage();
                 loadWebState().catch(error => setWebStateStatus(error.message));
+                wsSend({ type: 'retained_results_get' });
             };
             ws.onmessage = (event) => {
                 try {
                     const msg = JSON.parse(event.data);
                     handleMessage(msg);
+                    if (['scan_complete_wait_dc', 'test_complete', 'official_speed_complete', 'nsb_speed_complete', 'nsb_csv_complete', 'web_batch_complete', 'task_stopped', 'task_complete'].includes(msg.type)) scheduleRetainedView();
                 } catch (e) {
                     recordWebDebugError('ws_message_parse', e && e.message ? e.message : String(e));
                     console.error('WebSocket message parse error:', e);
                 }
             };
             ws.onclose = () => {
+                pendingInitialScan = '';
                 serverConfigLoadIntents = [];
                 for (const pending of webStatePending.values()) {
                     clearTimeout(pending.timer);
@@ -3824,6 +4035,10 @@
             return getScanMode() === 'httping' ? 'HTTPing' : 'TCPing';
         }
 
+        function resultScanModeLabel(row) {
+            return row.RecordedScanMode ? (row.RecordedScanMode === 'httping' ? 'HTTPing' : 'TCPing') : (retainedGeneration ? '未知' : getScanModeLabel());
+        }
+
         function updateScanModeHint() {
             const mode = getScanMode();
             const hint = getScanModeHint();
@@ -3873,6 +4088,7 @@
             if (!isTaskRunning) resetProgress();
             updateScanModeHint();
             log(`切换至：${mode === 'official' ? '官方优选' : '非标优选'}`);
+            scheduleRetainedView();
         }
 
         function switchTab(tabId) {
@@ -3904,6 +4120,7 @@
             } else if (currentMode === 'nsb' && tabId === 'scan') {
                 renderCurrentScanResults();
             }
+            scheduleRetainedView();
         }
 
         function renderCurrentScanResults() {
@@ -4243,6 +4460,7 @@
         }
 
         function resetStoppedTaskUI(message = '已手动终止') {
+            manualDetailRunning = false;
             clearStopWatchdog();
             isStoppingTask = false;
             webBatchRunning = false;
@@ -4507,7 +4725,7 @@
             const latencyVal = parseFloat(row.LatencyStr);
             const lcFactor = getLatencyColorFactor();
             const latencyColor = getLatencyColor(latencyVal, lcFactor);
-            const html = `<tr><td>${renderIPCell(row.IP, row.OriginalInput || row.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${row.Port ?? ''}', event)">${row.Port ?? '-'}</span></td><td>${row.DataCenter || '-'}</td><td>${row.DCCountry || '-'}</td><td>${row.Region || '-'}</td><td>${row.City || '-'}</td><td>${getScanModeLabel()}</td><td style="color:${latencyColor}; font-weight:600;">${row.LatencyStr || '-'}</td></tr>`;
+            const html = `<tr><td>${renderIPCell(row.IP, row.OriginalInput || row.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${row.Port ?? ''}', event)">${row.Port ?? '-'}</span></td><td>${row.DataCenter || '-'}</td><td>${row.DCCountry || '-'}</td><td>${row.Region || '-'}</td><td>${row.City || '-'}</td><td>${resultScanModeLabel(row)}</td><td style="color:${latencyColor}; font-weight:600;">${row.LatencyStr || '-'}</td></tr>`;
             tbody.insertAdjacentHTML('beforeend', html);
         }
 
@@ -4544,8 +4762,12 @@
             filter = normalizeQualifiedFilter(filter);
             if (filter === 'all') return true;
             const speed = getOfficialRowSpeed(row);
-            const status = getSpeedStatus(speed, row.BatchQualified ?? isOfficialSpeedQualified(speed));
+            const status = getSpeedStatus(speed, row.BatchQualified ?? (row.ExactSpeed ? row.ExactSpeed.measured && row.ExactSpeed.mb >= officialSpeedMinValue : isOfficialSpeedQualified(speed)));
             return status === filter;
+        }
+
+        function officialResultQualified(row, speed = getOfficialRowSpeed(row)) {
+            return row.BatchQualified ?? (row.ExactSpeed ? row.ExactSpeed.measured && row.ExactSpeed.mb >= officialSpeedMinValue : isOfficialSpeedQualified(speed));
         }
 
         function getFilteredOfficialScanData() {
@@ -4985,7 +5207,7 @@
                 const isTesting = currentTestingDC === dc.DataCenter;
                 const lcFactor = getLatencyColorFactor();
                 const latencyColor = getLatencyColor(dc.MinLatency, lcFactor);
-                const btn = isTesting ? `<button class="action-btn" disabled>测试中...</button>` : `<button class="action-btn${isTested ? ' selected' : ''}" onclick="selectDC('${dc.DataCenter}')" ${isTaskRunning ? 'disabled' : ''}>${isTested ? '重新测试' : '选择测试'}</button>`;
+                const btn = isTesting ? `<button class="action-btn" disabled>测试中...</button>` : `<button class="action-btn${isTested ? ' selected' : ''}" onclick="selectDC('${dc.DataCenter}')" ${isTaskRunning ? 'disabled' : ''}>加入详细测试${isTested ? '（已测）' : ''}</button>`;
                 const checkbox = `<label class="web-dc-check"><input type="checkbox" data-dc="${dc.DataCenter}" aria-label="批量选择 ${dc.DataCenter}" onchange="toggleWebDatacenter('${dc.DataCenter}', this.checked)" ${selectedWebDCs.has(dc.DataCenter) ? 'checked' : ''} ${isTaskRunning ? 'disabled' : ''}></label>`;
                 const tr = `<tr><td>${checkbox}</td><td><strong>${dc.DataCenter}</strong></td><td>${escapeHTML(dc.DCCountry || '-')}</td><td>${escapeHTML(dc.City)}</td><td>${dc.IPCount}</td><td style="color:${latencyColor}; font-weight:600;">${dc.MinLatency} ms</td><td>${btn}</td></tr>`;
                 tbody.insertAdjacentHTML('beforeend', tr);
@@ -5001,6 +5223,7 @@
             pendingSavedWebDCs.clear();
             markWebConfigDirty();
             updateWebBatchSelection();
+            scheduleRetainedView();
         }
 
         function filterWebDatacenters() {
@@ -5053,13 +5276,62 @@
             return { datacenters, port, maxLatencyMS, minSpeedMB, limit, url: resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset'), scanMode: getScanMode() };
         }
 
+        function getDetailScopeRows() {
+            if (!activeDetailCenters) return testData;
+            const rows = testData.filter(row => activeDetailCenters.has(row.DataCenter));
+            const measured = new Set(rows.map(row => `${row.IP}:${row.Port}`));
+            for (const scan of scanData) {
+                if (!activeDetailCenters.has(scan.DataCenter) || measured.has(`${scan.IP}:${scan.Port}`)) continue;
+                measured.add(`${scan.IP}:${scan.Port}`);
+                rows.push({ ...scan, CandidateOnly: true, MinLatency: scan.TCPDuration || 0, MaxLatency: scan.TCPDuration || 0, AvgLatency: scan.TCPDuration || 0, LossRate: 0, Speed: '' });
+            }
+            if (retainedSort.official.length) return rows.map((item, index) => ({ item, index, row: officialTestSortObject(item) })).sort((a, b) => compareSortableRows(a, b, retainedSort.official)).map(entry => entry.item);
+            return rows;
+        }
+
         function startWebBatch() {
             if (isTaskRunning || currentMode !== 'official') return;
-            if (requireProxyWarning(startWebBatch)) return;
+            const centers = [...selectedWebDCs].filter(dc => dcList.some(row => row.DataCenter === dc));
+            if (!centers.length) return showNoticeCard('请先选择数据中心');
+            activeDetailCenters = new Set(centers);
+            officialAutoSpeedPending = false;
+            officialAutoStage = '';
+            clearHuaweiPreview();
+            document.getElementById('webBatchSummary').textContent = `当前详细测试：${centers.join(', ')}；已测数据保留。延迟测试和测速需分别手动启动。`;
+            renderAllTestResults();
+            switchTab('test');
+            scheduleRetainedView();
+        }
+
+        function startDetailLatency() {
+            if (isTaskRunning) return;
+            const datacenters = activeDetailCenters ? [...activeDetailCenters] : [];
+            if (!datacenters.length) return showNoticeCard('请先在扫描结果选择中心并加入详细测试');
+            if (requireProxyWarning(startDetailLatency)) return;
+            const port = Number(document.getElementById('officialTestPort').value) || 443;
+            const delay = Number(document.getElementById('officialDelay').value) || 0;
+            if (!wsSend({ type: 'start_test', data: { datacenters, port, delay, scanMode: getScanMode(), manual: true } })) return showNoticeCard('连接未就绪；已有结果保留');
+            manualDetailRunning = true;
+            officialAutoSpeedPending = false;
+            officialAutoStage = '';
+            isTaskRunning = true;
+            runningTaskLabel = '所选中心延迟测试';
+            runningTaskMode = 'official';
+            runningTaskTab = 'test';
+            setStartLoading(getRunningButtonText());
+            progressBox.style.display = 'block';
+            renderAllTestResults();
+        }
+
+        function startAutomaticWebBatch() {
+            if (isTaskRunning || currentMode !== 'official') return;
+            if (requireProxyWarning(startAutomaticWebBatch)) return;
             let request;
             try { request = getWebBatchRequest(); } catch (err) { showNoticeCard(err.message); return; }
             if (!saveWebPublishOptions()) return;
             if (!wsSend({ type: 'start_web_batch', data: request })) { showNoticeCard('连接未就绪，请等待重连后再试'); return; }
+            activeDetailCenters = new Set(request.datacenters);
+            manualDetailRunning = false;
             webBatchRunning = true;
             completedWebBatch = null;
             webBatchDerivedResults = true;
@@ -5071,7 +5343,6 @@
             officialTestQualifiedFilter = 'all';
             officialTestLatencyFilter = 0;
             officialTestLossFilter = 100;
-            testData = [];
             isTaskRunning = true;
             runningTaskLabel = '多中心 ' + request.datacenters.join(', ');
             runningTaskMode = 'official';
@@ -5108,9 +5379,8 @@
                     webBatchDerivedResults = true;
                     if (isStoppingTask) break;
                     {
-                        const row = { ...p.result, BatchQualified: p.qualified };
-                        const index = testData.findIndex(item => item.IP === row.IP);
-                        if (index < 0) testData.push(row); else testData[index] = row;
+                        const row = { ...p.result, RecordedScanMode: p.result.RecordedScanMode || getScanMode(), BatchQualified: p.qualified };
+                        mergeRetainedTests([row]);
                         renderAllTestResults();
                     }
                     break;
@@ -5118,7 +5388,7 @@
                     webBatchDerivedResults = true;
                     if (isStoppingTask) break;
                     completedWebBatch = p;
-                    testData = p.results.map((row, index) => ({ ...row, BatchQualified: true, BatchRank: index + 1 }));
+                    mergeRetainedTests(p.results.map((row, index) => ({ ...row, BatchQualified: true, BatchRank: index + 1 })));
                     officialSpeedEnabledForResults = testData.length > 0;
                     officialContinueSpeedUnlocked = false;
                     officialTestQualifiedFilter = 'all';
@@ -5137,15 +5407,17 @@
         }
 
         function selectDC(dc) {
+            if (!officialAutoSpeedPending) {
+                selectedWebDCs = new Set([dc]);
+                startWebBatch();
+                return;
+            }
             if (requireProxyWarning(() => selectDC(dc))) return;
             if (isTaskRunning) return;
             const port = parseInt(document.getElementById('officialTestPort').value);
             const delay = parseInt(document.getElementById('officialDelay').value) || 500;
 
-            testResultsCount = 0;
             autoUploadKeys = new Set();
-            updateBadge('testCount', 0);
-            testData = [];
             webBatchDerivedResults = false;
             officialSpeedEnabledForResults = false;
             officialContinueSpeedUnlocked = false;
@@ -5153,7 +5425,6 @@
             officialTestLatencyFilter = 0;
             officialTestLossFilter = 100;
             currentTestingDC = dc;
-            document.querySelector('#testTable tbody').innerHTML = '';
             document.getElementById('currentTestDC').textContent = `测试中: ${dc}`;
             isTaskRunning = true;
             runningTaskLabel = `官方优选 ${dc}`;
@@ -5178,31 +5449,33 @@
             const port = res.Port || parseInt(document.getElementById('officialTestPort').value) || 443;
             const meta = testResultToObject(res);
             const speedText = res.Speed || '未测速';
-            const speedStatus = getSpeedStatus(speedText, res.BatchQualified ?? isOfficialSpeedQualified(speedText));
+            const speedStatus = getSpeedStatus(speedText, officialResultQualified(res, speedText));
             const speedColor = speedText.includes('MB/s') ? (parseFloat(speedText) > SPEED_GREEN ? '#10b981' : '#f59e0b') : (speedText === '未测速' ? 'inherit' : '#ef4444');
-            const isTesting = currentSpeedTestingIP === res.IP;
+            const isTesting = currentSpeedTestingIP === res.IP && currentSpeedTestingPort === port;
             const speedDisabled = isTesting || isTaskRunning || officialBatchSpeedRunning;
             const buttonText = isTesting ? '测速中' : (res.Speed ? '重新测速' : '测速');
             const lcFactor = getLatencyColorFactor();
-            const row = `<tr class="${speedStatus === 'qualified' ? 'row-qualified' : (speedStatus === 'unqualified' ? 'row-unqualified' : '')}"><td>${res.BatchRank ? `<span class="badge" aria-label="速度排名 ${res.BatchRank}">#${res.BatchRank}</span> ` : ""}${renderIPCell(res.IP, res.OriginalInput || res.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${port}', event)">${port}</span></td><td>${meta.dc || '-'}</td><td>${meta.dcCountry || '-'}</td><td>${meta.region || '-'}</td><td>${meta.city || '-'}</td><td>${getScanModeLabel()}</td><td>${(res.LossRate * 100).toFixed(0)}%</td><td>${(res.MinLatency / 1_000_000).toFixed(0)} ms</td><td>${(res.MaxLatency / 1_000_000).toFixed(0)} ms</td><td style="color:${getLatencyColor(res.AvgLatency / 1_000_000, lcFactor)}; font-weight:600;">${(res.AvgLatency / 1_000_000).toFixed(0)} ms</td><td style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:none;"><span class="speed-result" id="speed-val-${res.IP.replace(/[:.]/g, '_')}" style="color:${speedColor};"><span>${speedText}</span>${renderSpeedStatusTag(speedStatus)}</span><button class="action-btn speed-btn" id="btn-speed-${res.IP.replace(/[:.]/g, '_')}" onclick="runSpeedTest('${res.IP}')" ${speedDisabled ? 'disabled' : ''}>${buttonText}</button></td></tr>`;
+            const row = `<tr class="${speedStatus === 'qualified' ? 'row-qualified' : (speedStatus === 'unqualified' ? 'row-unqualified' : '')}"><td>${res.BatchRank ? `<span class="badge" aria-label="速度排名 ${res.BatchRank}">#${res.BatchRank}</span> ` : ""}${renderIPCell(res.IP, res.OriginalInput || res.originalInput)}</td><td><span class="copy-ip" onclick="copyToClipboard('${port}', event)">${port}</span></td><td>${meta.dc || '-'}</td><td>${meta.dcCountry || '-'}</td><td>${meta.region || '-'}</td><td>${meta.city || '-'}</td><td>${resultScanModeLabel(res)}</td><td>${(res.LossRate * 100).toFixed(0)}%</td><td>${(res.MinLatency / 1_000_000).toFixed(0)} ms</td><td>${(res.MaxLatency / 1_000_000).toFixed(0)} ms</td><td style="color:${getLatencyColor(res.AvgLatency / 1_000_000, lcFactor)}; font-weight:600;">${(res.AvgLatency / 1_000_000).toFixed(0)} ms</td><td style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:none;"><span class="speed-result" id="speed-val-${speedElementKey(res.IP, port)}" style="color:${speedColor};"><span>${speedText}</span>${renderSpeedStatusTag(speedStatus)}</span><button class="action-btn speed-btn" id="btn-speed-${speedElementKey(res.IP, port)}" onclick="runSpeedTest('${res.IP}', ${port})" ${speedDisabled ? 'disabled' : ''}>${buttonText}</button></td></tr>`;
             document.querySelector('#testTable tbody').insertAdjacentHTML('beforeend', row);
         }
 
         function addTestResult(res, render = true) {
+            res = { ...res, RecordedScanMode: res.RecordedScanMode || getScanMode() };
             if (res.WebBatchDerived) webBatchDerivedResults = true;
-            testResultsCount++;
-            testData.push(res);
+            const existed = retainedTestArray === testData && retainedTestIndex.has(`${res.IP}:${res.Port}`);
+            mergeRetainedTests([res]);
+            testResultsCount = testData.length;
             updateBadge('testCount', getFilteredOfficialTestData().length);
-            if (render && matchesOfficialQualifiedFilter(res, officialTestQualifiedFilter)) renderTestRow(res);
+            if (render && existed) renderAllTestResults();
+            else if (render && (!activeDetailCenters || activeDetailCenters.has(res.DataCenter)) && matchesOfficialQualifiedFilter(res, officialTestQualifiedFilter)) renderAllTestResults();
             updateBatchSpeedButton();
         }
 
         function getFilteredOfficialTestData() {
-            return testData.filter((row) => matchesOfficialQualifiedFilter(row, officialTestQualifiedFilter) && officialLatencyLossMatch(row));
+            return getDetailScopeRows().filter((row) => matchesOfficialQualifiedFilter(row, officialTestQualifiedFilter) && officialLatencyLossMatch(row));
         }
 
         function setOfficialTestQualifiedFilter(value) {
-            syncOfficialSpeedConfigState();
             officialTestQualifiedFilter = normalizeQualifiedFilter(value);
             const filter = document.getElementById('officialTestQualifiedFilter');
             if (filter && filter.value !== officialTestQualifiedFilter) filter.value = officialTestQualifiedFilter;
@@ -5210,7 +5483,6 @@
         }
 
         function renderAllTestResults() {
-            syncOfficialSpeedConfigState();
             const tbody = document.querySelector('#testTable tbody');
             tbody.innerHTML = '';
             const rows = getFilteredOfficialTestData();
@@ -5228,8 +5500,12 @@
             status.textContent = '测试完成';
         }
 
-        function runSpeedTest(ip) {
-            if (requireProxyWarning(() => runSpeedTest(ip))) return;
+        function speedElementKey(ip, port) {
+            return `${ip.replace(/[:.]/g, '_')}_${port}`;
+        }
+
+        function runSpeedTest(ip, selectedPort) {
+            if (requireProxyWarning(() => runSpeedTest(ip, selectedPort))) return;
             syncOfficialSpeedConfigState();
             if (isTaskRunning || officialBatchSpeedRunning) {
                 log('当前已有任务运行，单个测速已忽略');
@@ -5240,24 +5516,27 @@
                 return;
             }
 
-            const id = `btn-speed-${ip.replace(/[:.]/g, '_')}`;
+            const port = Number(selectedPort) || parseInt(document.getElementById('officialTestPort').value);
+            const id = `btn-speed-${speedElementKey(ip, port)}`;
             const btn = document.getElementById(id);
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = '测速中';
             }
-            const speedVal = document.getElementById(`speed-val-${ip.replace(/[:.]/g, '_')}`);
+            const speedVal = document.getElementById(`speed-val-${speedElementKey(ip, port)}`);
             if (speedVal) speedVal.textContent = '⏳...';
             currentSpeedTestingIP = ip;
-            const port = parseInt(document.getElementById('officialTestPort').value);
+            currentSpeedTestingPort = port;
             const customUrl = resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset');
             if (!wsSend({ type: 'start_speed_test', data: { ip, port, url: customUrl } })) {
-                if (speedVal) speedVal.textContent = '连接未就绪';
+                const previous = testData.find(row => row.IP === ip && row.Port === port);
+                if (speedVal) speedVal.textContent = previous?.Speed || '未测速';
                 if (btn) {
                     btn.textContent = '重新测速';
                     btn.disabled = false;
                 }
                 currentSpeedTestingIP = '';
+                currentSpeedTestingPort = 0;
             }
         }
 
@@ -5281,18 +5560,25 @@
 
         function updateSpeedResult(data) {
             syncOfficialSpeedConfigState();
-            const btn = document.getElementById(`btn-speed-${data.ip.replace(/[:.]/g, '_')}`);
-            const val = document.getElementById(`speed-val-${data.ip.replace(/[:.]/g, '_')}`);
-            const item = testData.find((r) => r.IP === data.ip);
+            const port = Number(data.port) || testData.find(row => row.IP === data.ip)?.Port;
+            const btn = document.getElementById(`btn-speed-${speedElementKey(data.ip, port)}`);
+            const val = document.getElementById(`speed-val-${speedElementKey(data.ip, port)}`);
+            let item = testData.find((r) => r.IP === data.ip && r.Port === port);
+            if (!item) {
+                const source = testData.find(row => row.IP === data.ip);
+                if (source) { mergeRetainedTests([{ ...source, Port: port, Speed: data.speed }]); item = testData.find(row => row.IP === data.ip && row.Port === port); }
+            }
             if (item) {
                 item.Speed = data.speed;
                 delete item.BatchQualified;
+                delete item.ExactSpeed;
                 delete item.BatchRank;
             }
             officialSpeedEnabledForResults = testData.some((r) => isOfficialSpeedQualified(r.Speed));
             const speedStatus = getSpeedStatus(data.speed, isOfficialSpeedQualified(data.speed));
-            if (currentSpeedTestingIP === data.ip) {
+            if (currentSpeedTestingIP === data.ip && currentSpeedTestingPort === port) {
                 currentSpeedTestingIP = '';
+                currentSpeedTestingPort = 0;
             }
             if (val) {
                 val.innerHTML = `<span>${escapeHTML(data.speed)}</span>${renderSpeedStatusTag(speedStatus)}`;
@@ -5315,32 +5601,37 @@
             const url = resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset');
             const speedMin = parseFloat(document.getElementById('officialSpeedMin')?.value || '0.1') || 0.1;
             const speedLimit = parseInt(document.getElementById('officialSpeedLimit')?.value || '0', 10) || 0;
-            return { port, url, speedMin, speedLimit, results: testData.slice() };
+            return { port, url, speedMin, speedLimit, results: getDetailScopeRows().filter(row => !row.CandidateOnly), ...(activeDetailCenters ? { datacenters: [...activeDetailCenters] } : {}) };
         }
 
         function syncOfficialSpeedConfigState(cfg = getOfficialSpeedConfig()) {
-            officialSpeedMinValue = cfg.speedMin;
-            officialSpeedEnabledForResults = cfg.speedLimit > 0;
+            if (!testData.length || isTaskRunning) {
+                officialSpeedMinValue = cfg.speedMin;
+                officialSpeedEnabledForResults = cfg.speedLimit > 0;
+            }
             return cfg;
         }
 
         function updateBatchSpeedButton() {
             const btn = document.getElementById('btnBatchSpeed');
             const continueBtn = document.getElementById('btnContinueBatchSpeed');
-            const disabled = officialBatchSpeedRunning || isTaskRunning || !testData.length || currentMode !== 'official';
+            const rows = getDetailScopeRows();
+            const disabled = officialBatchSpeedRunning || isTaskRunning || !rows.length || currentMode !== 'official';
+            const latencyButton = document.getElementById('btnDetailLatency');
+            if (latencyButton) latencyButton.disabled = isTaskRunning || !activeDetailCenters?.size;
             if (btn) {
                 btn.disabled = disabled;
                 btn.textContent = officialBatchSpeedRunning ? '测速中...' : '🚀 一键测速';
             }
             if (!continueBtn) return;
-            continueBtn.disabled = disabled || !officialContinueSpeedUnlocked || !testData.some((row) => getSpeedStatus(row.Speed, isOfficialSpeedQualified(row.Speed)) === 'untested');
+            continueBtn.disabled = disabled || !officialContinueSpeedUnlocked || !rows.some((row) => getSpeedStatus(row.Speed, isOfficialSpeedQualified(row.Speed)) === 'untested');
             continueBtn.textContent = officialBatchSpeedRunning ? '测速中...' : '⏭️ 继续测速';
         }
 
         function startOfficialBatchSpeed(auto = false, continued = false) {
             if (requireProxyWarning(() => startOfficialBatchSpeed(auto, continued))) return false;
             if (officialBatchSpeedRunning) return false;
-            if (!testData.length) {
+            if (!getDetailScopeRows().length) {
                 if (!auto) showNoticeCard('请先完成数据中心详细测试');
                 return false;
             }
@@ -5350,15 +5641,15 @@
                 else log('官方自动测速已跳过：测速结果上限为 0');
                 return false;
             }
+            officialSpeedMinValue = cfg.speedMin;
+            officialSpeedEnabledForResults = true;
+            if (!auto && activeDetailCenters) manualDetailRunning = true;
             officialBatchSpeedRunning = true;
             isTaskRunning = true;
             isStoppingTask = false;
             runningTaskLabel = '官方一键测速';
             runningTaskMode = 'official';
             runningTaskTab = 'test';
-            if (!continued) {
-                testData.forEach((row) => { row.Speed = ''; });
-            }
             setOfficialTestQualifiedFilter('all');
             officialTestLatencyFilter = 0;
             officialTestLossFilter = 100;
@@ -5368,6 +5659,7 @@
             progressBox.style.display = 'block';
             updateBatchSpeedButton();
             if (!wsSend({ type: 'start_official_speed_batch', data: { ...cfg, skipTested: continued } })) {
+                manualDetailRunning = false;
                 officialBatchSpeedRunning = false;
                 finishRunningTask('✨ 开始扫描与测试');
                 updateBatchSpeedButton();
@@ -5409,9 +5701,6 @@
             runningTaskLabel = continued ? '非标继续测速' : '非标一键测速';
             runningTaskMode = 'nsb';
             runningTaskTab = 'scan';
-            if (!continued) {
-                rows.forEach((row) => { row.speed = ''; });
-            }
             setNSBTableQualifiedFilter('all');
             nsbTableLatencyFilter = 0;
             nsbTableLossFilter = 100;
@@ -5432,9 +5721,10 @@
         function resetCurrentSpeedButton() {
             if (!currentSpeedTestingIP) return;
             const ip = currentSpeedTestingIP;
-            const btn = document.getElementById(`btn-speed-${ip.replace(/[:.]/g, '_')}`);
-            const val = document.getElementById(`speed-val-${ip.replace(/[:.]/g, '_')}`);
-            const item = testData.find((r) => r.IP === ip);
+            const port = currentSpeedTestingPort;
+            const btn = document.getElementById(`btn-speed-${speedElementKey(ip, port)}`);
+            const val = document.getElementById(`speed-val-${speedElementKey(ip, port)}`);
+            const item = testData.find((r) => r.IP === ip && r.Port === port);
             if (btn) {
                 btn.textContent = '重新测速';
                 btn.disabled = false;
@@ -5445,6 +5735,7 @@
                 val.style.color = fallbackSpeed.includes('MB/s') ? (parseFloat(fallbackSpeed) > 10 ? '#10b981' : '#f59e0b') : '';
             }
             currentSpeedTestingIP = '';
+            currentSpeedTestingPort = 0;
             updateBatchSpeedButton();
         }
 
@@ -5498,6 +5789,7 @@
         }
 
         function startTask() {
+            if (pendingInitialScan) return;
             if (isTaskRunning || officialBatchSpeedRunning || nsbBatchSpeedRunning) {
                 showConfirmCard(getStopConfirmText(), confirmStopCurrentTask, '终止当前任务');
                 return;
@@ -5549,28 +5841,7 @@
             setStartLoading(getRunningButtonText());
             resetProgress();
             progressBox.style.display = 'block';
-            renderScanHeaders('official');
-            document.querySelector('#scanTable tbody').innerHTML = '';
-            document.querySelector('#dcTable tbody').innerHTML = '';
-            document.getElementById('dcSection').style.display = 'none';
-            document.querySelector('#testTable tbody').innerHTML = '';
-            document.getElementById('currentTestDC').textContent = '';
-
-            scanData = [];
-            testData = [];
-            webBatchDerivedResults = false;
-            dcList = [];
-            selectedWebDCs.clear();
-            updateWebBatchSelection();
-            testedDCs.clear();
-            currentTestingDC = '';
-            scanResultsCount = 0;
-            testResultsCount = 0;
-            autoUploadKeys = new Set();
-            updateBadge('scanCount', 0);
-            updateBadge('testCount', 0);
-            updateBadge('dcCount', 0);
-
+            pendingInitialScan = 'official';
             if (!wsSend({ type: 'start_task', data: {
                 ipType, threads, port, delay, scanMode: getScanMode(),
                 autoSpeed: autoSpeed,
@@ -5580,6 +5851,7 @@
                 officialSpeedMin: officialSpeedConfig.speedMin,
                 officialSpeedLimit: officialSpeedConfig.speedLimit,
             } })) {
+                pendingInitialScan = '';
                 officialAutoSpeedPending = false;
                 officialAutoStage = '';
                 finishRunningTask('✨ 开始扫描与测试');
@@ -5671,14 +5943,7 @@
             document.getElementById('dcSection').style.display = 'none';
             document.querySelector('#testTable tbody').innerHTML = '';
 
-            nsbHeaders = [];
-            nsbRows = [];
-            nsbLiveRows = [];
-            nsbLiveIndex = {};
-            nsbLiveRowElements = {};
-            updateBadge('scanCount', 0);
-            autoUploadKeys = new Set();
-
+            pendingInitialScan = 'nsb';
             if (!wsSend({
                 type: 'start_nsb_task',
                 data: {
@@ -5701,6 +5966,7 @@
                     relinkHost: getNSBRelinkHost(speedTest > 0),
                 }
             })) {
+                pendingInitialScan = '';
                 finishRunningTask('✨ 开始扫描与测试');
                 showNoticeCard('连接未就绪，请等待重连后再试');
             }
@@ -5744,6 +6010,37 @@
             { key: 'timestamp', label: '时间戳' },
         ];
 
+        function captureResultDraft() {
+            const values = {};
+            for (const id of ['resultFormat', 'resultStartRow', 'resultEndRow', 'resultIPTypeFilter', 'resultQualifiedFilter', 'resultLatencyFilter', 'resultLossFilter', 'resultCustomFields', 'resultTextSeparatorPreset', 'resultTextSeparatorCustom', 'resultIPv6Brackets']) {
+                const el = document.getElementById(id);
+                values[id] = el.type === 'checkbox' ? el.checked : el.value;
+            }
+            return { values, fields: resultFieldOrder.slice(), custom: resultCustomFields.map(field => ({ ...field })) };
+        }
+
+        function restoreResultDraft(draft) {
+            for (const [id, value] of Object.entries(draft.values)) {
+                const el = document.getElementById(id);
+                if (el.type === 'checkbox') el.checked = value; else el.value = value;
+            }
+            resultFieldOrder = draft.fields.slice();
+            resultCustomFields = draft.custom.map(field => ({ ...field }));
+            renderResultFieldOptions();
+        }
+
+        function setProviderPage(view) {
+            providerView = view;
+            document.body.classList.toggle('provider-page-open', !!view);
+            for (const [id, active] of [['resultModalMask', view === 'github' || view === 'edgetunnel'], ['huaweiModalMask', view === 'huawei']]) {
+                const el = document.getElementById(id);
+                el.classList.toggle('provider-page', active);
+                el.setAttribute('role', active ? 'region' : 'dialog');
+                if (active) el.removeAttribute('aria-modal'); else el.setAttribute('aria-modal', 'true');
+            }
+            if (view) window.scrollTo(0, 0);
+        }
+
         function openResultModal(mode) {
             resultReturnFocus = document.activeElement;
             resultHuaweiLoaded = false;
@@ -5767,6 +6064,7 @@
             renderGitHubAccounts();
             accountSelect.value = selectedAccount;
             renderResultFieldOptions();
+            if (!providerDrafts.has(`${resultModalMode}:base`)) providerDrafts.set(`${resultModalMode}:base`, captureResultDraft());
             showResultActionView('chooser');
         }
 
@@ -5775,12 +6073,15 @@
             if (!titles[view]) return;
             const mask = document.getElementById('resultModalMask');
             const previous = mask.dataset.view;
+            if (providerView === 'github' || providerView === 'edgetunnel') providerDrafts.set(`${resultModalMode}:${providerView}`, captureResultDraft());
             mask.dataset.view = view;
             if (view === 'huawei') {
                 mask.classList.remove('active');
                 openHuaweiPanel(true);
                 return;
             }
+            setProviderPage(view === 'github' || view === 'edgetunnel' ? view : '');
+            if (providerView) restoreResultDraft(providerDrafts.get(`${resultModalMode}:${view}`) || providerDrafts.get(`${resultModalMode}:base`) || captureResultDraft());
             document.getElementById('resultModalTitle').textContent = titles[view];
             mask.classList.add('active');
             const choices = { export: 'resultExportChoice', github: 'resultGitHubChoice', edgetunnel: 'resultEdgetunnelChoice', huawei: 'resultHuaweiChoice' };
@@ -5788,6 +6089,8 @@
         }
 
         function closeResultModal() {
+            if (providerView === 'github' || providerView === 'edgetunnel') providerDrafts.set(`${resultModalMode}:${providerView}`, captureResultDraft());
+            setProviderPage('');
             document.getElementById('resultModalMask').classList.remove('active');
             document.getElementById('huaweiAK').value = '';
             document.getElementById('huaweiSK').value = '';
@@ -5802,7 +6105,7 @@
                 else showResultActionView('chooser');
                 return;
             }
-            trapDialogFocus(event, 'resultModalMask');
+            if (!providerView) trapDialogFocus(event, 'resultModalMask');
         }
 
         function trapDialogFocus(event, maskID) {
@@ -5947,11 +6250,14 @@
         }
 
         function applyOfficialTestSort(priorities) {
+            retainedSort.official = priorities.slice();
             testData = testData.map((item, index) => ({ item, index, row: officialTestSortObject(item) }))
                 .sort((a, b) => compareSortableRows(a, b, priorities))
                 .map((entry) => entry.item);
             if (currentMode === 'official') renderAllTestResults();
             log('官方详细测试结果已按自定义优先级排序');
+            clearHuaweiPreview();
+            scheduleRetainedView();
         }
 
         function officialTestSortObject(item) {
@@ -5963,6 +6269,7 @@
         }
 
         function applyNSBSort(priorities) {
+            retainedSort.nsb = priorities.slice();
             if (nsbRows.length) {
                 const normalizedHeaders = nsbHeaders.map(normalizeNSBHeader);
                 const lossIndex = normalizedHeaders.indexOf('丢包率');
@@ -5980,6 +6287,8 @@
                 if (currentMode === 'nsb') renderAllNSBLiveRows();
             }
             log('非标测速结果已按自定义优先级排序');
+            clearHuaweiPreview();
+            scheduleRetainedView();
         }
 
         function rebuildNSBLiveIndex() {
@@ -6603,25 +6912,29 @@
         }
 
         function getCurrentResultRows(mode) {
-            if (currentMode === 'nsb') return getNSBResultObjects();
-            if (mode === 'test') return testData.map(testResultToObject);
+            if (mode === 'nsb') return getNSBResultObjects();
+            if (mode === 'test') return getDetailScopeRows().map(testResultToObject);
             return scanData.map(scanResultToObject).slice().sort(compareOfficialResultObjects);
         }
 
         function getCurrentExportRows(mode) {
             const rows = getCurrentResultRows(mode);
-            const filter = document.getElementById('resultIPTypeFilter')?.value || 'all';
-            const qualified = document.getElementById('resultQualifiedFilter')?.value || 'all';
-            if (currentMode === 'nsb') {
-                return rows.filter((row) => matchesIPTypeFilter(row.ipType, filter) && matchesQualifiedFilter(row, qualified) && exportLatencyLossMatch(row));
-            }
-            return rows.filter((row) => matchesIPTypeFilter(getOfficialIPType(row), filter) && matchesOfficialQualifiedFilter(row, qualified) && exportLatencyLossMatch(row));
+            return filterOutputRows(rows, 'result', mode);
         }
 
-        function exportLatencyLossMatch(row) {
-            let latencyFilter = parseFloat(document.getElementById('resultLatencyFilter')?.value);
+        function filterOutputRows(rows, prefix, mode = resultModalMode) {
+            const filter = document.getElementById(`${prefix}IPTypeFilter`)?.value || 'all';
+            const qualified = document.getElementById(`${prefix}QualifiedFilter`)?.value || 'all';
+            if (mode === 'nsb') {
+                return rows.filter((row) => matchesIPTypeFilter(row.ipType, filter) && matchesQualifiedFilter(row, qualified) && exportLatencyLossMatch(row, prefix));
+            }
+            return rows.filter((row) => matchesIPTypeFilter(getOfficialIPType(row), filter) && matchesOfficialQualifiedFilter(row, qualified) && exportLatencyLossMatch(row, prefix));
+        }
+
+        function exportLatencyLossMatch(row, prefix = 'result') {
+            let latencyFilter = parseFloat(document.getElementById(`${prefix}LatencyFilter`)?.value);
             if (!Number.isFinite(latencyFilter) || latencyFilter < 0) latencyFilter = 0;
-            let lossFilter = parseFloat(document.getElementById('resultLossFilter')?.value);
+            let lossFilter = parseFloat(document.getElementById(`${prefix}LossFilter`)?.value);
             if (!Number.isFinite(lossFilter)) lossFilter = 100;
             lossFilter = Math.min(100, Math.max(0, lossFilter));
             const latencyMs = latencyMsForFilter(row.latency);
@@ -6658,6 +6971,8 @@
                 city: r.City || scan.City || '',
                 latency: `${(r.AvgLatency / 1_000_000).toFixed(0)}ms`,
                 speed: r.Speed || '未测速',
+                ExactSpeed: r.ExactSpeed,
+                BatchQualified: r.BatchQualified,
                 lossRate: r.LossRate != null ? `${(r.LossRate * 100).toFixed(0)}%` : '',
             };
         }
@@ -6791,15 +7106,19 @@
 
         function openHuaweiPanel(fromResult = false) {
             huaweiFromResult = fromResult;
+            huaweiResultMode = resultModalMode;
+            setProviderPage('huawei');
             document.getElementById('huaweiBack').hidden = !fromResult;
             document.getElementById('settingsMenu').classList.add('hidden');
             document.getElementById('huaweiModalMask').classList.add('active');
             if (!fromResult || (!resultHuaweiLoaded && !resultHuaweiLoading)) loadHuaweiConfig();
+            updateHuaweiSelection();
             document.getElementById('huaweiAK').focus();
         }
 
         function closeHuaweiPanel() {
             document.getElementById('huaweiModalMask').classList.remove('active');
+            setProviderPage('');
             if (huaweiFromResult) {
                 huaweiFromResult = false;
                 showResultActionView('chooser');
@@ -6813,14 +7132,59 @@
         function handleHuaweiDialogKey(event) {
             if (document.getElementById('noticeCardMask').classList.contains('active')) return;
             if (event.key === 'Escape') { event.preventDefault(); closeHuaweiPanel(); return; }
-            trapDialogFocus(event, 'huaweiModalMask');
+            if (!providerView) trapDialogFocus(event, 'huaweiModalMask');
         }
 
         function clearHuaweiPreview() {
             huaweiPreviewToken = '';
             huaweiPreviewBatchID = 0;
+            huaweiPreviewSelection = '';
+            huaweiPreviewRequestID = '';
             document.getElementById('huaweiConfirm').disabled = true;
-            document.getElementById('huaweiPreview').textContent = '需要完成同一会话的多中心测试，再生成新的服务端预览';
+            document.getElementById('huaweiPreview').textContent = '请预览当前选中结果；确认前不会更新 DNS';
+        }
+
+        function getSelectedHuaweiIPs() {
+            const rows = filterOutputRows(getCurrentResultRows(huaweiResultMode), 'huawei', huaweiResultMode);
+            const start = Math.max(1, parseInt(document.getElementById('huaweiStartRow').value, 10) || 1);
+            const end = Math.max(start, parseInt(document.getElementById('huaweiEndRow').value, 10) || 10);
+            return rows.slice(start - 1, end).map(row => row.ip);
+        }
+
+        function updateHuaweiSelection() {
+            clearHuaweiPreview();
+            const ips = getSelectedHuaweiIPs();
+            document.getElementById('huaweiSelection').textContent = ips.length ? `已选 ${ips.length} 条，沿用结果顺序：\n${ips.slice(0, 20).join('\n')}${ips.length > 20 ? '\n…预览仅展示前 20 条，实际选择不截断' : ''}` : '当前筛选和行范围没有结果';
+            if (!huaweiDraftEdited) reloadHuaweiDraft();
+        }
+
+        function getHuaweiEditedIPs() {
+            return [...new Set(document.getElementById('huaweiNewIPs').value.split(/[\s,;]+/).map(ip => ip.trim()).filter(Boolean))];
+        }
+
+        function editHuaweiIPs() {
+            huaweiDraftEdited = true;
+            clearHuaweiPreview();
+        }
+
+        function changeHuaweiMode() {
+            huaweiDraftEdited = false;
+            reloadHuaweiDraft();
+        }
+
+        function reloadHuaweiDraft() {
+            clearHuaweiPreview();
+            huaweiDraftEdited = false;
+            const selected = getSelectedHuaweiIPs();
+            const mode = document.getElementById('huaweiUpdateMode').value;
+            const ips = mode === 'append' ? [...huaweiTargetRecords, ...selected] : selected;
+            document.getElementById('huaweiNewIPs').value = [...new Set(ips)].join('\n');
+        }
+
+        function copyHuaweiIPs(event) {
+            const text = document.getElementById('huaweiNewIPs').value;
+            if (!text.trim()) return showNoticeCard('没有可复制的 IP');
+            copyToClipboard(text, event);
         }
 
         function handleHuaweiDisconnectFeedback() {
@@ -6896,24 +7260,29 @@
         }
 
         function previewHuaweiDNS() {
-            if (!completedWebBatch?.results?.length) return showNoticeCard('先完成多中心测试；失败、取消或空结果不能发布');
+            if (isTaskRunning) return showNoticeCard('请先等待当前测试完成，再预览 DNS');
+            const ips = huaweiDraftEdited ? getHuaweiEditedIPs() : getSelectedHuaweiIPs();
+            if (!ips.length) return showNoticeCard('当前筛选和行范围没有可更新的结果');
             document.getElementById('huaweiConfirm').disabled = true;
+            huaweiPreviewSelection = '';
+            huaweiPreviewRequestID = `dns-${++huaweiPreviewSequence}`;
+            huaweiPreviewToken = '';
             const status = document.getElementById('huaweiDNSStatus');
-            if (!wsSend({ type: 'huawei_preview', data: { batchId: completedWebBatch.id } })) {
+            if (!wsSend({ type: 'huawei_preview', data: { ips, batchId: 0, requestId: huaweiPreviewRequestID, mode: document.getElementById('huaweiUpdateMode').value, final: huaweiDraftEdited } })) {
                 status.textContent = '连接未就绪；预览未发送，请重连后重试';
                 status.className = 'upload-status error';
                 return;
             }
-            status.textContent = '正在生成服务端完成批次预览…';
+            status.textContent = '正在生成所选结果的服务端 DNS 预览…';
             status.className = 'upload-status';
         }
 
         function confirmHuaweiDNS() {
-            if (!completedWebBatch || !huaweiPreviewToken || completedWebBatch.id !== huaweiPreviewBatchID) return showNoticeCard('预览已失效，请重新预览');
+            if (isTaskRunning || !huaweiPreviewToken || huaweiPreviewSelection !== JSON.stringify({ mode: document.getElementById('huaweiUpdateMode').value, ips: getHuaweiEditedIPs() })) return showNoticeCard('IP 列表或模式已变化，请重新校验预览');
             if (!confirm('确认仅更新预览中的现有 DNS 记录值？TTL、线路、权重等保持不变。')) return;
             const status = document.getElementById('huaweiDNSStatus');
             if (!wsSend({ type: 'huawei_update', data: { batchId: huaweiPreviewBatchID, token: huaweiPreviewToken, confirmed: true } })) {
-                status.textContent = '连接未就绪；确认更新未发送。如已断开，重连后须重新完成当前会话批次并生成新预览';
+                status.textContent = '连接未就绪；确认更新未发送，重连后须重新预览当前结果';
                 status.className = 'upload-status error';
                 return;
             }
@@ -6971,7 +7340,7 @@
                 if (p.destination === 'dns' && ['updated', 'skipped', 'failed', 'denied'].includes(p.status)) huaweiUpdatePending = false;
                 const id = p.destination === 'dns' ? 'huaweiDNSStatus' : 'githubUploadStatus';
                 const el = document.getElementById(id);
-                el.textContent = `批次 ${p.batchId} · ${p.status}: ${p.message}`;
+                el.textContent = `${p.batchId ? '批次 ' + p.batchId + ' · ' : ''}${p.status}: ${p.message}`;
                 el.className = 'upload-status' + (['failed', 'denied'].includes(p.status) ? ' error' : ' success');
                 return true;
             }
@@ -7053,14 +7422,22 @@
                 discoveryStatus.textContent = `发现 ${data.length} 个可选现有 A/AAAA 记录集`;
                 discoveryStatus.className = 'upload-status success';
             } else if (action === 'huawei_select') {
+                huaweiTargetRecords = data.records.slice();
+                huaweiDraftEdited = false;
+                reloadHuaweiDraft();
                 document.getElementById('huaweiTarget').textContent = `${data.name} · ${data.type}\nZone ID: ${data.zoneId}\nRecord ID: ${data.id}\nLine: ${data.line} · TTL: ${data.ttl}s\n当前: ${data.records.join(', ')}`;
                 const discoveryStatus = document.getElementById('huaweiDiscoveryStatus');
                 discoveryStatus.textContent = '目标已明确选择；更新前请先预览';
                 discoveryStatus.className = 'upload-status success';
             } else if (action === 'huawei_preview') {
+                if (data.requestId && data.requestId !== huaweiPreviewRequestID) return true;
                 huaweiPreviewToken = data.token;
                 huaweiPreviewBatchID = data.batchId;
-                document.getElementById('huaweiPreview').textContent = `批次 ${data.batchId} · ${data.target.name} · ${data.target.type} · ${data.target.line} · TTL ${data.target.ttl}s\n旧: ${data.old.join(', ')}\n新: ${data.new.join(', ') || '无匹配地址族，保持旧记录'}\n${data.changed ? '确认后仅修改 records；如目标或云端状态变化会拒绝' : '无变化 / 空结果，跳过更新'}`;
+                huaweiTargetRecords = data.old.slice();
+                document.getElementById('huaweiNewIPs').value = data.new.join('\n');
+                huaweiDraftEdited = true;
+                huaweiPreviewSelection = JSON.stringify({ mode: document.getElementById('huaweiUpdateMode').value, ips: getHuaweiEditedIPs() });
+                document.getElementById('huaweiPreview').textContent = `${data.target.name} · ${data.target.type} · ${data.target.line} · TTL ${data.target.ttl}s\n旧: ${data.old.join(', ')}\n新: ${data.new.join(', ') || '无匹配地址族，保持旧记录'}\n${data.changed ? '确认后仅修改 records；如目标或云端状态变化会拒绝' : '无变化 / 空结果，跳过更新'}`;
                 document.getElementById('huaweiConfirm').disabled = !data.changed;
                 status.textContent = data.changed ? '预览已生成；确认前不会更新 DNS' : '预览无变化；不会更新 DNS';
             } else if (action === 'web_publish_options') {
@@ -7106,17 +7483,21 @@
             const password = document.getElementById('edgetunnelPassword').value.trim();
             if (!host) return showNoticeCard('Host 不能为空');
             if (!password) return showNoticeCard('密码不能为空');
-            try { await saveCurrentEdgetunnelAccount(); }
-            catch (_) { showNoticeCard('账户未加密保存；原账户保留，本次仅用当前输入上传'); }
             const format = document.getElementById('resultFormat').value;
+            let selectedContent;
+            try { selectedContent = buildSelectedResultContent(format); } catch (_) { selectedContent = ''; }
+            const quickFilePromise = readQuickUploadFile();
             let content;
             try {
-                const quickFile = await readQuickUploadFile();
-                content = quickFile ? quickFile.content : buildSelectedResultContent(format);
+                const quickFile = await quickFilePromise;
+                content = quickFile ? quickFile.content : selectedContent;
+                if (!content) return showNoticeCard('暂无可操作结果');
             } catch (err) {
                 showNoticeCard(err.message || '暂无可操作结果');
                 return;
             }
+            try { await saveCurrentEdgetunnelAccount(); }
+            catch (_) { showNoticeCard('账户未加密保存；原账户保留，本次仅用当前输入上传'); }
             setEdgetunnelUploadStatus('正在上传...', 'success');
             wsSend({ type: 'edgetunnel_upload', data: { host, password, content, mode } });
             log(`已提交 edgetunnel ${mode === 'append' ? '追加' : '覆盖'}上传请求`);
@@ -7158,34 +7539,27 @@
 
         async function uploadSelectedResultsToGitHub() {
             const format = document.getElementById('resultFormat').value;
-            const quickFile = await readQuickUploadFile();
-            if (!quickFile && currentMode === 'official' && resultModalMode === 'test' && webBatchDerivedResults) {
-                if (!completedWebBatch?.results?.length || webBatchRunning || isTaskRunning || isStoppingTask) {
-                    return showNoticeCard('这些结果来自多中心批次；当前批次未完成或已失效，不能上传。请重新完成多中心测试。');
-                }
-                const settings = selectedGitHubSettings();
-                if (!settings) return;
-                wsSend({ type: 'web_github_publish', data: { batchId: completedWebBatch.id, githubConfig: settings.githubConfig, format: settings.format } });
-                return;
-            }
+            const quickFilePromise = readQuickUploadFile();
+            let selectedContent;
+            try { selectedContent = buildSelectedResultContent(format); } catch (_) { selectedContent = ''; }
             let content;
-            try {
-                content = quickFile ? quickFile.content : buildSelectedResultContent(format);
-            } catch (err) {
-                showNoticeCard(err.message || '暂无可操作结果');
-                return;
-            }
             const repoParts = document.getElementById('githubRepo').value.trim().split('/');
             if (repoParts.length !== 2 || !repoParts[0] || !repoParts[1]) return showNoticeCard('仓库格式应为 owner/repo');
             const payload = {
                 token: document.getElementById('githubToken').value.trim(),
                 owner: repoParts[0], repo: repoParts[1],
                 branch: document.getElementById('githubBranch').value.trim() || 'main',
-                path: document.getElementById('githubPath').value.trim() || (quickFile ? `results/${quickFile.name}` : `results/ip.${format}`),
+                path: document.getElementById('githubPath').value.trim(),
                 message: document.getElementById('githubMessage').value.trim() || 'update cfdata results',
-                content,
             };
             if (!payload.token) return showNoticeCard('Token 不能为空');
+            try {
+                const quickFile = await quickFilePromise;
+                content = quickFile ? quickFile.content : selectedContent;
+                if (!content) return showNoticeCard('暂无可操作结果');
+                payload.content = content;
+                payload.path ||= quickFile ? `results/${quickFile.name}` : `results/ip.${format}`;
+            } catch (err) { return showNoticeCard(err.message || '读取上传内容失败'); }
             try { await saveCurrentGitHubAccount(payload); }
             catch (_) { showNoticeCard('账户未加密保存；原账户保留，本次仅用当前输入上传'); }
             sendGitHubUpload(payload);
@@ -7198,6 +7572,7 @@
         }
 
         async function autoUploadOfficialResults() {
+            if (manualDetailRunning) return;
             if (webBatchDerivedResults) return;
             const value = document.getElementById('officialAutoUploadAccount')?.value || '';
             await autoUploadResults(value, 'test', '官方自动上传已提交');
@@ -7259,6 +7634,7 @@
         }
 
         function handleMessage(msg) {
+            if (handleRetainedMessage(msg)) return;
             if (handleWebStateMessage(msg)) return;
             if (handleHuaweiMessage(msg)) return;
             switch (msg.type) {
@@ -7323,18 +7699,18 @@
                     break;
                 case 'scan_result':
                     if (isStoppingTask) break;
-                    addScanResult(msg.data, currentMode === 'official' && runningTaskMode !== 'nsb');
+                    addScanResult({ ...msg.data, RecordedScanMode: msg.data.RecordedScanMode || getScanMode() }, currentMode === 'official' && runningTaskMode !== 'nsb');
                     break;
                 case 'scan_complete_wait_dc':
                     const wasStoppingScan = isStoppingTask;
                     finishRunningTask('✨ 重新开始扫描');
+                    showDCSelection(msg.data);
                     if (currentMode === 'official') {
                         sortAndRenderScanResults();
-                        showDCSelection(msg.data);
                         if (!wasStoppingScan) {
                             completeProgressWithCurrentCount('扫描完成，选择数据中心');
                         }
-                    }
+                    } else document.getElementById('dcSection').style.display = 'none';
                     break;
                 case 'test_progress':
                     if (isStoppingTask) break;
@@ -7347,14 +7723,17 @@
                     addTestResult(msg.data, currentMode === 'official' && document.getElementById('test').classList.contains('active'));
                     break;
                 case 'test_complete':
+                    mergeRetainedTests((msg.data || []).map(row => ({ ...row, RecordedScanMode: row.RecordedScanMode || getScanMode() })));
+                    if (manualDetailRunning) for (const row of msg.data || []) if (row.DataCenter) testedDCs.add(row.DataCenter);
                     if (isStoppingTask) {
                         resetStoppedTaskUI('已手动终止');
                         log('任务已手动终止');
                         break;
                     }
                     if (currentMode === 'official') {
-                        testData = msg.data;
-                        webBatchDerivedResults = testData.some(row => row.WebBatchDerived === true);
+                        if (retainedSort.official.length) applyOfficialTestSort(retainedSort.official);
+                        else { testData.sort((a, b) => a.AvgLatency - b.AvgLatency); retainedTestArray = null; }
+                        webBatchDerivedResults = (msg.data || []).some(row => row.WebBatchDerived === true);
                         renderAllTestResults();
                         onTestComplete();
                         officialTestCompletePending = true;
@@ -7510,9 +7889,6 @@
                     nsbStopHandledByComplete = wasStoppingNSB;
                     nsbHeaders = msg.data.headers || [];
                     nsbRows = msg.data.rows || [];
-                    nsbLiveRows = [];
-                    nsbLiveIndex = {};
-                    nsbLiveRowElements = {};
                     nsbContinueSpeedUnlocked = nsbSpeedEnabledForResults;
                     if (nsbSpeedEnabledForResults) {
                         setNSBTableQualifiedFilter((msg.data.qualifiedCount || 0) > 0 ? 'qualified' : 'all');
@@ -7566,6 +7942,8 @@
                     break;
 
                 case 'error':
+                    manualDetailRunning = false;
+                    pendingInitialScan = '';
                     if (String(msg.data || '').includes('配置文件失败')) serverConfigLoadIntents.shift();
                     recordWebDebugError('server_error', msg.data);
                     if (webBatchRunning) {
@@ -7667,6 +8045,13 @@
                     log(msg.data);
                     break;
                 case 'task_complete':
+                    if (manualDetailRunning) {
+                        manualDetailRunning = false;
+                        officialTestCompletePending = false;
+                        finishRunningTask('✨ 开始扫描与测试');
+                        renderAllTestResults();
+                        break;
+                    }
                     if (isStoppingTask) {
                         resetStoppedTaskUI('已手动终止');
                         log('任务已手动终止');
@@ -7756,6 +8141,7 @@
             document.addEventListener(eventName, event => {
                 const id = event.target.id || '';
                 if ((id.startsWith('official') || id.startsWith('nsb') || id === 'webBatchLimit') && !id.includes('AutoUpload') && !id.includes('FileInput')) markWebConfigDirty();
+                if (id.startsWith('official') || id.startsWith('nsb') || id.startsWith('sort') || event.target.closest('#dcTable, #webDCChoices')) scheduleRetainedView();
             });
         }
 
@@ -7766,6 +8152,7 @@
             }
         }
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', autoThemeBySystem);
+        window.addEventListener('pagehide', saveRetainedView);
     </script>
 </body>
 

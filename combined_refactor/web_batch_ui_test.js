@@ -42,8 +42,9 @@ const state = vm.createContext({
   document: { getElementById: id => elements[id], querySelector: () => tbody, querySelectorAll: () => checkboxes },
   dcList: [{ DataCenter: 'NRT', City: 'Tokyo' }, { DataCenter: 'LHR', City: 'London' }, { DataCenter: 'GRU', City: 'Sao Paulo' }],
   selectedWebDCs: new Set(['NRT', 'GRU']), pendingSavedWebDCs: new Set(), markWebConfigDirty() {}, testedDCs: new Set(), currentTestingDC: '',
-  isTaskRunning: false, webBatchRunning: false, currentMode: 'official',
-  saveWebPublishOptions: () => true, clearHuaweiPreview() {}, handleHuaweiMessage() { return false; }, handleWebStateMessage() { return false; },
+  scheduleRetainedView() {},
+  manualDetailRunning:false, isTaskRunning: false, webBatchRunning: false, currentMode: 'official', retainedGeneration: 0,
+  saveWebPublishOptions: () => true, clearHuaweiPreview() {}, handleHuaweiMessage() { return false; }, handleWebStateMessage() { return false; }, handleRetainedMessage() { return false; },
   resolveSpeedTestUrl: () => 'speed.cloudflare.com/__down', getScanMode: () => 'tcping',
   escapeHTML: value => String(value ?? '').replaceAll('<', '&lt;'),
   getLatencyColorFactor: () => 1, getLatencyColor: () => 'inherit', updateBadge() {},
@@ -103,16 +104,21 @@ assert.match(html, /case 'web_batch_complete'/);
 assert.match(html, /case 'web_batch_failed'/);
 assert.match(html, /case 'web_batch_progress'/);
 Object.assign(state, {
-  isStoppingTask: false, completedWebBatch: null, testData: [],
+  isStoppingTask: false, completedWebBatch: null, testData: [{ IP: '192.0.2.99', Port: 443, Speed: '3.00MB/s' }],
+  retainedTestIndex: new Map(), retainedTestArray: null, retainedTestLength: 0,
   renderAllTestResults() {}, updateProgress() {},
 });
+vm.runInContext(extractFunction('mergeRetainedTests'), state);
 vm.runInContext(extractFunction('handleWebBatchMessage'), state);
 vm.runInContext(`handleWebBatchMessage({ type: 'web_batch_result', data: { result: { IP: '192.0.2.1', Speed: '1.00MB/s' }, qualified: false } })`, state);
-assert.equal(state.testData[0].BatchQualified, false); // 0.999 rounding must not qualify.
+assert.equal(state.testData.find(row => row.IP === '192.0.2.1').BatchQualified, false); // 0.999 rounding must not qualify.
 vm.runInContext(`handleWebBatchMessage({ type: 'web_batch_complete', data: { id: 7, results: [{ IP: '192.0.2.9' }, { IP: '192.0.2.1' }], policy: { Datacenters: ['NRT', 'GRU'], Limit: 10 }, measuredCount: 20, qualifiedCount: 12 } })`, state);
-assert.equal(state.testData.length, 2);
-assert.equal(state.testData[0].IP, '192.0.2.9');
-assert.equal(state.testData[0].BatchRank, 1);
+assert.equal(state.testData.length, 3, 'completed batch must merge with earlier measurements, not replace them');
+assert.equal(state.testData[0].IP, '192.0.2.99');
+assert.equal(state.testData[0].Speed, '3.00MB/s', 'unrelated retained measurement must survive completion');
+assert.equal(state.testData.find(row => row.IP === '192.0.2.9').BatchRank, 1);
+assert.equal(state.testData.find(row => row.IP === '192.0.2.1').BatchRank, 2);
+assert.equal(state.testData.find(row => row.IP === '192.0.2.1').BatchQualified, true);
 assert.equal(state.completedWebBatch.id, 7);
 vm.runInContext('showDCSelection(dcList)', state);
 assert.equal(state.completedWebBatch.id, 7); // Rendering cannot clear verified batch ID.
@@ -128,7 +134,7 @@ assert.equal(state.isTaskRunning, false);
 assert.equal(state.completedWebBatch.id, 7);
 vm.runInContext(`handleWebBatchMessage({ type: 'web_batch_failed', data: { status: 'cancelled', message: 'cancelled' } })`, state);
 assert.equal(state.completedWebBatch, null);
-assert.equal(state.testData.length, 2); // Inspecting partial rows is allowed, publishing them is not.
+assert.equal(state.testData.length, 3); // Inspecting partial rows is allowed, publishing them is not.
 state.scanData = [{ IP: '192.0.2.1', DataCenter: 'FRA', City: 'wrong scan row' }];
 vm.runInContext(extractFunction('testResultToObject'), state);
 const metadata = JSON.parse(vm.runInContext(`JSON.stringify(testResultToObject({ IP: '192.0.2.1', DataCenter: 'NRT', City: 'Tokyo', AvgLatency: 100000000 }))`, state));

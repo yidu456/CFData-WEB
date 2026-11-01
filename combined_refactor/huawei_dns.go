@@ -78,14 +78,17 @@ type huaweiRecord struct {
 	Records  []string `json:"records"`
 }
 type huaweiPreview struct {
-	Token       string       `json:"token"`
-	BatchID     uint64       `json:"batchId"`
-	Target      huaweiRecord `json:"target"`
-	Old         []string     `json:"old"`
-	New         []string     `json:"new"`
-	Changed     bool         `json:"changed"`
-	revision    uint64
-	fingerprint string
+	Token              string       `json:"token"`
+	BatchID            uint64       `json:"batchId"`
+	RequestID          string       `json:"requestId,omitempty"`
+	Target             huaweiRecord `json:"target"`
+	Old                []string     `json:"old"`
+	New                []string     `json:"new"`
+	Changed            bool         `json:"changed"`
+	revision           uint64
+	fingerprint        string
+	manualSelection    bool
+	publicationContext context.Context
 }
 
 type huaweiDNSStore struct {

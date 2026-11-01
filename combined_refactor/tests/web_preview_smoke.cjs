@@ -27,6 +27,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     let encryptedSaveSupported = true, privateFileStatus = 'absent', appliedConfigSaved = false, legacyFileStatus = 'available', legacyMigrationSupported = true, legacyCleanupReady = false;
     const send = (type, data) => socket.send(JSON.stringify({ type, data }));
     const response = (action, data) => send('huawei_response', { action, data });
+    const emptyRetained = { generation: 0, mode: 'official', scans: [], tests: [], centers: [], nsbLive: [], view: {}, saved: true };
     await page.routeWebSocket('**/*', routed => {
       socket = routed;
       connections++;
@@ -35,7 +36,9 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
         const request = JSON.parse(String(raw));
         requests.push(request);
         switch (request.type) {
+          case 'retained_results_get': send('retained_results', emptyRetained); break;
           case 'web_state_get': send('web_state_response', { action: request.type, requestId: request.data.requestId, ok: true, metadata: { revision: 0, privateFileStatus: 'absent', encryptedSaveSupported: true }, sections: {} }); break;
+          case 'web_state_patch': send('web_state_response', { action: request.type, requestId: request.data.requestId, ok: true, revision: request.data.revision + 1 }); break;
           case 'check_proxy_country': send('proxy_country_result', { cfCountry: 'SKIPPED', proxyWarning: false, geoCheckOK: true, skipGeoCheck: true }); break;
           case 'web_publish_options': response(request.type, { dns: request.data.dns, github: request.data.github }); break;
           case 'start_web_batch': {
@@ -44,6 +47,7 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
             send('web_batch_started', { id: batchID, candidateCount: 14, policy });
             send('web_batch_progress', { current: 14, total: 14, qualified: resultCount, phase: 'speed' });
             if (holdBatch) { send('web_batch_result', { result: row(1), qualified: true }); break; }
+            for (let n = 1; n <= 14; n++) send('web_batch_result', { result: row(n), qualified: n <= resultCount });
             send('web_batch_complete', { id: batchID, results: Array.from({ length: resultCount }, (_, i) => row(i + 1)), candidateCount: 14, measuredCount: 14, qualifiedCount: resultCount === 10 ? 14 : resultCount, missingDatacenters: resultCount === 2 ? ['SJC'] : [], policy });
             send('task_complete', null);
             break;
@@ -77,10 +81,11 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
           case 'huawei_select': response(request.type, target); break;
           case 'huawei_preview':
             if (previewError) send('huawei_error', { action: request.type, message: 'Preview stale; select and preview again' });
-            else response(request.type, { token: 'mock-preview-token', batchId: request.data.batchId, target, old: ['192.0.2.1'], new: previewChanged ? ['198.51.100.1'] : [], changed: previewChanged });
+            else response(request.type, { token: 'mock-preview-token', batchId: request.data.batchId, requestId: request.data.requestId, target, old: ['192.0.2.1'], new: request.data.ips, changed: previewChanged });
             break;
           case 'huawei_update': send('web_publish_status', { destination: 'dns', batchId: request.data.batchId, status: 'updated', message: 'Mock DNS update' }); break;
           case 'web_github_publish': send('web_publish_status', { destination: 'github', batchId: request.data.batchId, status: 'uploaded', message: 'Mock GitHub upload' }); break;
+          case 'github_upload': send('github_upload_result', { path: request.data.path, rawURL: 'https://raw.githubusercontent.com/owner/repo/main/results/ip.txt', silent: request.data.silent }); break;
         }
       });
     });
@@ -295,14 +300,15 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
       resultCount = count;
       const expectedID = batchID + 1;
       await page.locator('.tab[onclick="switchTab(\'scan\')"]').click();
-      await page.locator('#btnWebBatch').click();
+      await page.evaluate(() => startAutomaticWebBatch());
       await page.waitForFunction(id => completedWebBatch?.id === id && !isTaskRunning, expectedID);
-      assert.equal(await page.locator('#testTable tbody tr').count(), count);
+      assert.equal(await page.locator('#testTable tbody tr').count(), 14, 'all measured rows remain inspectable after final batch selection');
+      assert.equal(await page.evaluate(() => completedWebBatch.results.length), count, 'automatic batch selection must still honor its requested limit');
     };
     await runBatch(10);
     assert.deepEqual(requests.find(r => r.type === 'start_web_batch').data.datacenters, ['FRA', 'SJC']);
     assert.match(await page.locator('#webBatchSummary').textContent(), /14.*14.*10\/10/);
-    assert.deepEqual(await page.evaluate(() => testData.map(r => r.BatchRank)), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    assert.deepEqual(await page.evaluate(() => testData.filter(r => r.BatchRank).map(r => r.BatchRank)), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     await page.locator('#btnTestResultAction').click();
     assert.equal(await page.locator('#resultChooser').isVisible(), true);
     const beforeNavigation = requests.length;
@@ -316,6 +322,9 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.locator('#resultCustomFields').fill('Note:offline');
     await page.locator('#resultBack').click();
     await page.locator('#resultGitHubChoice').click();
+    assert.equal(await page.locator('#resultModalMask').getAttribute('role'), 'region');
+    assert.equal(await page.locator('#resultModalMask').getAttribute('aria-modal'), null);
+    await page.locator('#resultCustomFields').fill('Note:offline');
     assert.equal(await page.locator('#githubToken').isVisible(), true);
     assert.equal(await page.locator('#edgetunnelPassword').isVisible(), false);
     assert.equal(await page.locator('#resultActions button:visible').count(), 1);
@@ -343,12 +352,11 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.equal(await page.locator('#resultFormat').inputValue(), 'txt');
     for (const id of ['githubToken', 'edgetunnelPassword', 'huaweiAK', 'resultFormat']) assert.equal(await page.locator(`[id="${id}"]`).count(), 1, `${id} was duplicated`);
     await page.screenshot({ path: path.join(output, 'results-github-desktop.png'), fullPage: true });
-    const firstResultControl = page.locator('#resultBack');
     await page.locator('#resultActions button:visible').focus();
+    await page.evaluate(() => document.addEventListener('keydown', event => { window.smokeTabPrevented = event.defaultPrevented; }, { once: true }));
     await page.keyboard.press('Tab');
-    assert.equal(await firstResultControl.evaluate(el => el === document.activeElement), true, 'result dialog must trap only visible controls');
+    assert.equal(await page.evaluate(() => window.smokeTabPrevented), false, 'provider pages must preserve native Tab navigation rather than modal trapping');
     await page.keyboard.press('Shift+Tab');
-    assert.equal(await page.locator('#resultActions button:visible').evaluate(el => el === document.activeElement), true);
     await page.setViewportSize({ width: 390, height: 844 });
     for (const choice of ['GitHub', 'Edgetunnel', 'Export']) {
       await page.locator('#resultBack').click();
@@ -398,15 +406,20 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.match(await page.locator('#webBatchSummary').textContent(), /2\/10.*SJC/);
     await runBatch(0);
     const previewCount = requests.filter(r => r.type === 'huawei_preview').length;
-    await page.evaluate(() => previewHuaweiDNS());
-    assert.equal(requests.filter(r => r.type === 'huawei_preview').length, previewCount, 'empty batch attempted DNS preview');
+    await page.evaluate(() => { huaweiResultMode = 'test'; document.getElementById('huaweiEndRow').value = '14'; updateHuaweiSelection(); previewHuaweiDNS(); });
+    await page.waitForFunction(() => !document.getElementById('huaweiConfirm').disabled);
+    assert.equal(requests.filter(r => r.type === 'huawei_preview').length, previewCount + 1, 'empty automatic selection must not block ordinary measured-row DNS preview');
+    assert.equal(requests.filter(r => r.type === 'huawei_preview').at(-1).data.ips.length, 14, 'manual DNS range must not inherit the automatic top-10 cap');
     await page.evaluate(() => closeNoticeCard());
     holdBatch = true;
     await page.locator('.tab[onclick="switchTab(\'scan\')"]').click();
-    await page.locator('#btnWebBatch').click();
-    await page.waitForFunction(() => testData.length === 1 && isTaskRunning);
+    await page.evaluate(() => startAutomaticWebBatch());
+    await page.waitForFunction(() => testData.length === 14 && isTaskRunning);
     assert.equal(await search.isDisabled(), true);
     assert.equal(await tableSJC.isDisabled(), true);
+    await page.evaluate(() => previewHuaweiDNS());
+    assert.equal(requests.filter(r => r.type === 'huawei_preview').length, previewCount + 1, 'running batch must block manual DNS preview');
+    await page.evaluate(() => closeNoticeCard());
     // Exercise the same stop control as the normal Web flow, without a scan.
     await page.locator('#btnStart').click();
     await page.locator('#noticeCardActions button').last().click();
@@ -415,12 +428,15 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     assert.equal(await tableSJC.isDisabled(), false);
     assert.equal(requests.filter(r => r.type === 'stop_task').length, 1);
     await page.evaluate(() => previewHuaweiDNS());
-    assert.equal(requests.filter(r => r.type === 'huawei_preview').length, previewCount, 'cancelled batch attempted DNS preview');
+    await page.waitForFunction(() => !document.getElementById('huaweiConfirm').disabled);
+    assert.equal(requests.filter(r => r.type === 'huawei_preview').length, previewCount + 2, 'cancelled batch must retain ordinary manual access to measured results when idle');
     await page.evaluate(() => closeNoticeCard());
     holdBatch = false;
     await runBatch(10);
 
-    await page.evaluate(() => openHuaweiPanel());
+    await page.evaluate(() => { resultModalMode = 'test'; openHuaweiPanel(); });
+    assert.equal(await page.locator('#huaweiModalMask').getAttribute('role'), 'region');
+    assert.equal(await page.locator('#huaweiModalMask').getAttribute('aria-modal'), null);
     await page.waitForFunction(() => document.getElementById('huaweiConfigStatus').textContent.includes('6789'));
     assert.equal(await page.locator('#settingsMenu').getByText('华为云 DNS 配置与预览').count(), 0, 'old settings Huawei entry remains');
     assert.equal(await page.locator('#resultHuaweiChoice').count(), 1, 'Huawei chooser entry must remain unique');
@@ -516,19 +532,23 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
     await page.screenshot({ path: path.join(output, 'dns-mobile.png'), fullPage: true });
     await page.locator('#huaweiPreview').scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(output, 'dns-mobile-preview.png') });
-    const firstControl = page.locator('#huaweiModalMask button:visible').first();
     await page.locator('#huaweiConfirm').focus();
+    await page.evaluate(() => document.addEventListener('keydown', event => { window.smokeTabPrevented = event.defaultPrevented; }, { once: true }));
     await page.keyboard.press('Tab');
-    assert.equal(await firstControl.evaluate(el => el === document.activeElement), true, 'DNS dialog must trap keyboard focus');
+    assert.equal(await page.evaluate(() => window.smokeTabPrevented), false, 'DNS provider page must preserve native keyboard navigation');
     await page.keyboard.press('Shift+Tab');
-    assert.equal(await page.locator('#huaweiConfirm').evaluate(el => el === document.activeElement), true);
     page.once('dialog', dialog => dialog.accept());
     await page.locator('#huaweiConfirm').click();
     await page.waitForFunction(() => document.getElementById('huaweiDNSStatus').textContent.includes('Mock DNS update'));
     const update = requests.find(r => r.type === 'huawei_update');
     assert.equal(update.data.confirmed, true);
     assert.equal(update.data.token, 'mock-preview-token');
-    assert.equal(requests.find(r => r.type === 'huawei_preview').data.results, undefined, 'browser must not author DNS addresses');
+    assert.equal(update.data.batchId, 0, 'manual DNS updates must use preview authority rather than completed-batch authority');
+    const manualPreview = requests.filter(r => r.type === 'huawei_preview').at(-1).data;
+    assert.equal(manualPreview.batchId, 0);
+    assert.match(manualPreview.requestId, /^dns-\d+$/);
+    assert.deepEqual(manualPreview.ips, Array.from({ length: 14 }, (_, i) => `198.51.100.${i + 1}`));
+    assert.equal(manualPreview.results, undefined, 'manual DNS request must contain only selected bare IPs, not browser-authored measurement metadata');
     const blankConfig = requests.filter(r => r.type === 'huawei_config_set').at(-1).data;
     assert.equal(blankConfig.ak, '');
     assert.equal(blankConfig.sk, '');
@@ -550,13 +570,17 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
       document.getElementById('githubAutoSelected').checked = true; saveWebPublishOptions();
       await uploadSelectedResultsToGitHub();
     });
-    await page.waitForFunction(() => document.getElementById('githubUploadStatus').textContent.includes('Mock GitHub upload'));
+    await page.waitForFunction(() => document.getElementById('githubUploadStatus').textContent.includes('上传完成'));
+    assert.match(await page.locator('#noticeCardMessage').textContent(), /GitHub 上传完成/);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#noticeCardMask').isVisible(), false, 'manual upload completion notice must dismiss without leaving the provider page');
     const options = requests.filter(r => r.type === 'web_publish_options').at(-1).data;
     assert.equal(options.dns, true);
     assert.equal(options.github, true);
-    const upload = requests.find(r => r.type === 'web_github_publish');
-    assert.equal(upload.data.batchId, batchID);
-    assert.equal(upload.data.content, undefined, 'browser must not author completed batch uploads');
+    const upload = requests.find(r => r.type === 'github_upload');
+    assert.equal(upload.data.batchId, undefined, 'ordinary manual GitHub uploads must not require completed-batch authority');
+    assert.match(upload.data.content, /198\.51\.100\.1/);
+    assert.equal(requests.filter(r => r.type === 'web_github_publish').length, 0, 'manual selection must not borrow automatic backend-batch publication');
     send('web_publish_status', { destination: 'dns', batchId: batchID, status: 'failed', message: 'Mock provider unavailable' });
     send('web_publish_status', { destination: 'github', batchId: batchID, status: 'uploaded', message: 'Mock GitHub success' });
     await page.waitForFunction(() => document.getElementById('githubUploadStatus').textContent.includes('Mock GitHub success'));
@@ -586,7 +610,10 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
         emit('init_config', { version: 'offline-replay', skipGeoCheck: true, geoCheckOK: true, speedTestURL: 'auto' });
         routed.onMessage(raw => {
           const request = JSON.parse(String(raw)); replayRequests.push(request);
-          if (request.type === 'check_proxy_country') emit('proxy_country_result', { cfCountry: 'SKIPPED', proxyWarning: false, geoCheckOK: true, skipGeoCheck: true });
+          if (request.type === 'retained_results_get') emit('retained_results', emptyRetained);
+          else if (request.type === 'web_state_get') emit('web_state_response', { action: request.type, requestId: request.data.requestId, ok: true, metadata: { revision: 0, privateFileStatus: 'absent', encryptedSaveSupported: true }, sections: {} });
+          else if (request.type === 'web_state_patch') emit('web_state_response', { action: request.type, requestId: request.data.requestId, ok: true, revision: request.data.revision + 1 });
+          else if (request.type === 'check_proxy_country') emit('proxy_country_result', { cfCountry: 'SKIPPED', proxyWarning: false, geoCheckOK: true, skipGeoCheck: true });
           else if (request.type === 'start_speed_test') { replayRows[0].Speed = 'unmeasured'; emit('web_batch_invalidated', null); }
           else if (request.type === 'run_in_background') backgrounded = true;
           else if (request.type === 'follow_background_task') {
@@ -619,16 +646,19 @@ const row = (n) => ({ IP: `198.51.100.${n}`, Port: 443, DataCenter: n % 2 ? 'FRA
       await uploadSelectedResultsToGitHub();
     });
     await follower.waitForTimeout(30);
-    assert.ok(replayRequests.every(r => r.type !== 'github_upload' && r.type !== 'web_github_publish'), 'fresh background follower published invalid retest rows');
+    assert.equal(replayRequests.filter(r => r.type === 'github_upload').length, 1, 'fresh background follower must retain ordinary manual selected-result upload access');
+    assert.ok(replayRequests.every(r => r.type !== 'web_github_publish' && r.type !== 'web_publish_options'), 'restored retest rows must not gain automatic backend publishing authority');
     replayRows = [{ ...replayRows[0], IP: '192.0.2.3', WebBatchDerived: false }];
     await follower.evaluate(() => { closeNoticeCard(); followBackgroundTask(); });
-    await follower.waitForFunction(() => testData[0]?.IP === '192.0.2.3' && !webBatchDerivedResults);
+    await follower.waitForFunction(() => testData.length === 2 && testData.some(row => row.IP === '192.0.2.3' && !row.WebBatchDerived));
+    assert.equal(await follower.evaluate(() => testData.some(row => row.IP === '198.51.100.1' && row.WebBatchDerived)), true, 'later replay must merge, not discard earlier measurement provenance');
     await follower.evaluate(() => uploadSelectedResultsToGitHub());
     await follower.waitForTimeout(30);
-    assert.equal(replayRequests.filter(r => r.type === 'github_upload').length, 1, 'genuine legacy replay lost manual upload compatibility');
+    assert.equal(replayRequests.filter(r => r.type === 'github_upload').length, 2, 'genuine legacy replay lost manual upload compatibility');
+    assert.match(replayRequests.filter(r => r.type === 'github_upload').at(-1).data.content, /192\.0\.2\.3/);
     assert.ok([...requests, ...replayRequests].every(r => r.type !== 'start_task' && r.type !== 'edgetunnel_upload'), 'smoke unexpectedly started scan/edgetunnel flow');
     assert.deepEqual(errors, []);
-    console.log(`Offline Chrome smoke passed: chooser/dedicated views/back/focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, global top10/fewer/empty/cancel, explicit memory Apply/application-encrypted Save/no-cloud/blank keys/failure retention/legacy DPAPI conversion/backend capability failure/desktop keyboard/mobile save, DNS discovery/preview/confirmation/errors, independent statuses, reconnect and fresh legacy/provenance replay. Screenshots: ${output}`);
+    console.log(`Offline Chrome smoke passed: chooser/provider-page regions/back/native focus/state/mobile/read-only empty DNS entry, DC code/city/country search/hidden-selection retention/reset/background restore/native 24px checkboxes/44px desktop-mobile targets/keyboard/hover/disabled/single-center isolation, automatic top10/fewer/empty/cancel with merged measured rows, explicit memory Apply/application-encrypted Save/no-cloud/blank keys/failure retention/legacy DPAPI conversion/backend capability failure/desktop keyboard/mobile save, manual ordered 14-IP DNS selection/request correlation/discovery/preview/confirmation/errors, ordinary selected-result GitHub uploads without automatic authority, independent statuses, reconnect and merged legacy/provenance replay. Screenshots: ${output}`);
   } finally {
     await browser.close();
   }

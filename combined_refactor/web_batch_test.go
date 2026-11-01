@@ -226,7 +226,7 @@ func TestSingleIPSpeedRetainsOnlySuccessfulNumericMeasurement(t *testing.T) {
 			defer server.Close()
 			host, portText, _ := net.SplitHostPort(server.Listener.Addr().String())
 			port, _ := strconv.Atoi(portText)
-			s := &appSession{testResults: []TestResult{{IP: host, SpeedMeasured: true, MeasuredSpeedMB: 999}}}
+			s := &appSession{testResults: []TestResult{{IP: host, Port: port, SpeedMeasured: true, MeasuredSpeedMB: 999}}}
 			runSpeedTest(context.Background(), s, host, port, server.URL)
 			r := s.testResults[0]
 			if status == http.StatusOK {

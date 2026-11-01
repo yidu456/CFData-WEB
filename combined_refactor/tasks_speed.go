@@ -150,17 +150,38 @@ func runSpeedTest(ctx context.Context, session *appSession, ip string, port int,
 		return
 	}
 	session.testMutex.Lock()
+	var emitted *TestResult
 	for i := range session.testResults {
-		if session.testResults[i].IP == ip {
+		if session.testResults[i].IP == ip && session.testResults[i].Port == port {
 			applyOfficialSpeedMeasurement(&session.testResults[i], speedMB, speedErr)
+			copy := session.testResults[i]
+			emitted = &copy
 		}
 	}
 	session.testMutex.Unlock()
+	if emitted == nil {
+		session.scanMutex.Lock()
+		for _, scan := range session.scanResults {
+			if scan.IP == ip && scan.Port == port {
+				row := TestResult{IP: ip, Port: port, DataCenter: scan.DataCenter, DCCountry: scan.DCCountry, Region: scan.Region, City: scan.City, RecordedScanMode: scan.RecordedScanMode, MinLatency: scan.TCPDuration, MaxLatency: scan.TCPDuration, AvgLatency: scan.TCPDuration}
+				applyOfficialSpeedMeasurement(&row, speedMB, speedErr)
+				emitted = &row
+				break
+			}
+		}
+		session.scanMutex.Unlock()
+		if emitted != nil {
+			session.testMutex.Lock()
+			session.testResults = append(session.testResults, *emitted)
+			session.testMutex.Unlock()
+			session.sendWSMessage("test_result", *emitted)
+		}
+	}
 	if speedErr != "" {
 		if ctx.Err() != nil {
 			return
 		}
-		session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "speed": speedErr})
+		session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "port": strconv.Itoa(port), "speed": speedErr})
 		session.sendWSMessage("log", "测速失败: "+speedErr)
 		return
 	}
@@ -169,7 +190,7 @@ func runSpeedTest(ctx context.Context, session *appSession, ip string, port int,
 	}
 	speedStr := fmt.Sprintf("%.2fMB/s", speedMB)
 
-	session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "speed": speedStr})
+	session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "port": strconv.Itoa(port), "speed": speedStr})
 	session.sendWSMessage("log", fmt.Sprintf("IP %s 测速完成: %s", ip, speedStr))
 }
 
@@ -194,6 +215,7 @@ func applyOfficialSpeedMeasurement(result *TestResult, speedMB float64, speedErr
 }
 
 func runOfficialSpeedTestsCore(ctx context.Context, results []TestResult, port int, limit int, speedMinMB float64, customURL string, onResult func(current, total, qualified int, result TestResult), onRateLimited func()) ([]TestResult, []TestResult) {
+	results = officialSpeedCandidates(results, port)
 	capacity := len(results)
 	if limit > 0 && limit < capacity {
 		capacity = limit
@@ -250,7 +272,28 @@ func runOfficialSpeedTestsCore(ctx context.Context, results []TestResult, port i
 	return results, qualified
 }
 
-func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, customURL string, speedLimit int, speedMin float64, fallbackResults []TestResult, skipTested bool) {
+func officialSpeedCandidates(results []TestResult, port int) []TestResult {
+	candidates := make([]TestResult, 0, len(results))
+	positions := make(map[string]int, len(results))
+	for _, result := range results {
+		if i, exists := positions[result.IP]; exists {
+			if result.Port == port {
+				candidates[i] = result
+			}
+			continue
+		}
+		// The common port override measures a new endpoint, not the source row.
+		if result.Port != port {
+			result.Port = port
+			result.Speed, result.MeasuredSpeedMB, result.SpeedMeasured = "", 0, false
+		}
+		positions[result.IP] = len(candidates)
+		candidates = append(candidates, result)
+	}
+	return candidates
+}
+
+func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, customURL string, speedLimit int, speedMin float64, fallbackResults []TestResult, skipTested bool, scopes ...[]string) {
 	if port <= 0 {
 		port = 443
 	}
@@ -264,12 +307,34 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 	}
 
 	session.testMutex.Lock()
-	results := append([]TestResult(nil), session.testResults...)
+	pool := session.testResults
+	if len(scopes) > 0 {
+		selected := make(map[string]bool)
+		for _, dc := range scopes[0] {
+			selected[dc] = true
+		}
+		pool = nil
+		known := make(map[string]bool)
+		for _, row := range session.testResults {
+			if selected[row.DataCenter] {
+				pool = append(pool, row)
+				known[net.JoinHostPort(row.IP, strconv.Itoa(row.Port))] = true
+			}
+		}
+		session.scanMutex.Lock()
+		for _, scan := range session.scanResults {
+			if selected[scan.DataCenter] && !known[net.JoinHostPort(scan.IP, strconv.Itoa(scan.Port))] {
+				pool = append(pool, TestResult{IP: scan.IP, Port: scan.Port, DataCenter: scan.DataCenter, DCCountry: scan.DCCountry, Region: scan.Region, City: scan.City, RecordedScanMode: scan.RecordedScanMode, MinLatency: scan.TCPDuration, MaxLatency: scan.TCPDuration, AvgLatency: scan.TCPDuration})
+			}
+		}
+		session.scanMutex.Unlock()
+	}
+	results := officialSpeedCandidates(pool, port)
 	session.testMutex.Unlock()
-	if len(results) == 0 && len(fallbackResults) > 0 {
-		results = append([]TestResult(nil), fallbackResults...)
+	if len(scopes) == 0 && len(results) == 0 && len(fallbackResults) > 0 {
+		results = officialSpeedCandidates(fallbackResults, port)
 		session.testMutex.Lock()
-		session.testResults = append([]TestResult(nil), results...)
+		session.testResults = append([]TestResult(nil), fallbackResults...)
 		session.testMutex.Unlock()
 	}
 	if len(results) == 0 {
@@ -298,7 +363,10 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 	session.sendWSMessage("official_speed_progress", map[string]interface{}{"current": 0, "total": len(results), "qualified": 0, "limit": speedLimit})
 	rateLimited := false
 	updated, qualified := runOfficialSpeedTestsCore(ctx, results, port, speedLimit, speedMin, customURL, func(current, total, qualified int, result TestResult) {
-		session.sendWSMessage("speed_test_result", map[string]string{"ip": result.IP, "speed": result.Speed})
+		if len(scopes) > 0 {
+			session.sendWSMessage("test_result", result)
+		}
+		session.sendWSMessage("speed_test_result", map[string]string{"ip": result.IP, "port": strconv.Itoa(result.Port), "speed": result.Speed})
 		session.sendWSMessage("official_speed_progress", map[string]interface{}{"current": current, "total": total, "qualified": qualified, "limit": speedLimit})
 	}, func() {
 		rateLimited = true
@@ -306,18 +374,34 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 	})
 
 	session.testMutex.Lock()
-	byIP := make(map[string]TestResult, len(updated))
-	for _, result := range updated {
-		byIP[result.IP] = result
+	positions := make(map[string]int, len(session.testResults))
+	for idx, result := range session.testResults {
+		positions[net.JoinHostPort(result.IP, strconv.Itoa(result.Port))] = idx
 	}
-	for idx := range session.testResults {
-		if result, ok := byIP[session.testResults[idx].IP]; ok {
+	for _, result := range updated {
+		if idx, exists := positions[net.JoinHostPort(result.IP, strconv.Itoa(result.Port))]; exists {
 			session.testResults[idx].Speed = result.Speed
 			session.testResults[idx].MeasuredSpeedMB = result.MeasuredSpeedMB
 			session.testResults[idx].SpeedMeasured = result.SpeedMeasured
+		} else if result.Speed != "" && result.Speed != "未测速" {
+			positions[net.JoinHostPort(result.IP, strconv.Itoa(result.Port))] = len(session.testResults)
+			session.testResults = append(session.testResults, result)
 		}
 	}
-	totalQualified := countOfficialQualifiedResults(session.testResults, speedMin)
+	qualificationPool := session.testResults
+	if len(scopes) > 0 {
+		selected := make(map[string]bool)
+		for _, dc := range scopes[0] {
+			selected[dc] = true
+		}
+		qualificationPool = nil
+		for _, row := range session.testResults {
+			if selected[row.DataCenter] {
+				qualificationPool = append(qualificationPool, row)
+			}
+		}
+	}
+	totalQualified := countOfficialQualifiedResults(qualificationPool, speedMin)
 	session.testMutex.Unlock()
 	if ctx.Err() != nil {
 		session.sendWSMessage("log", "官方批量测速已终止")

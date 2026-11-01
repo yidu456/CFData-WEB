@@ -31,10 +31,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := &appSession{ws: ws}
+	if huaweiWebAuthorized(r) {
+		session.retained = latestResults
+	}
 	// Private state replies stay on the initiating connection, not a followed task.
 	stateReply := session.sendWSMessageDirect
 	session.refreshWebPublicationAfterReconnect()
 	defer func() {
+		if session.retained != nil {
+			session.retained.checkpoint(session)
+		}
 		session.cancelWebPublication()
 		if session.shouldCancelOnDisconnect() {
 			session.cancelTaskSilently()
@@ -148,7 +154,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				scanMode = scanModeTCPing
 			}
 			autoSpeed := params.AutoSpeed && params.OfficialSpeedLimit > 0
-			session.startTaskNamed("官方优选扫描", "official", map[string]interface{}{"ipType": params.IPType, "threads": params.Threads, "port": params.Port, "delay": params.Delay, "scanMode": scanMode, "autoSpeed": autoSpeed}, func(ctx context.Context, session *appSession) {
+			session.startTaskNamed("官方优选扫描", "official", map[string]interface{}{"ipType": params.IPType, "threads": params.Threads, "port": params.Port, "delay": params.Delay, "scanMode": scanMode, "autoSpeed": autoSpeed, "officialTargetDC": params.OfficialTargetDC, "officialSpeedPort": params.OfficialSpeedPort, "officialSpeedLimit": params.OfficialSpeedLimit, "officialSpeedMin": params.OfficialSpeedMin, "officialSpeedURL": params.OfficialSpeedURL}, func(ctx context.Context, session *appSession) {
 				runOfficialTask(ctx, session, params.IPType, params.Threads, params.Port, params.Delay, scanMode)
 				if ctx.Err() != nil || !autoSpeed || !session.isBackgroundTask() {
 					return
@@ -190,7 +196,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				session.sendWSMessage("error", "批量测试参数无效: "+err.Error())
 				return
 			}
-			session.startTaskNamed("多数据中心测试", "official", map[string]interface{}{"datacenters": params.Datacenters, "port": params.Port, "delay": params.MaxLatencyMS, "speedMin": params.MinSpeedMB, "finalLimit": params.Limit}, func(ctx context.Context, session *appSession) {
+			session.startTaskNamed("多数据中心测试", "official", map[string]interface{}{"datacenters": params.Datacenters, "port": params.Port, "delay": params.MaxLatencyMS, "speedMin": params.MinSpeedMB, "finalLimit": params.Limit, "scanMode": params.ScanMode}, func(ctx context.Context, session *appSession) {
 				_ = runWebBatch(ctx, session, params, defaultWebBatchDependencies())
 			})
 		},
@@ -209,6 +215,22 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			scanMode := params.ScanMode
 			if scanMode == "" {
 				scanMode = scanModeTCPing
+			}
+			if params.Datacenters != nil {
+				centers, err := resolveDetailDatacenters(session, params.Datacenters)
+				if err != nil {
+					session.sendWSMessage("error", err.Error())
+					return
+				}
+				session.startTaskNamed("官方详细测试", "official", map[string]interface{}{"datacenters": centers, "port": params.Port, "delay": params.Delay, "scanMode": scanMode}, func(ctx context.Context, session *appSession) {
+					for _, dc := range centers {
+						if ctx.Err() != nil {
+							return
+						}
+						runDetailedTest(ctx, session, dc, params.Port, params.Delay, scanMode, true)
+					}
+				})
+				return
 			}
 			session.startTaskNamed("官方详细测试", "official", map[string]interface{}{"dc": params.DC, "port": params.Port, "delay": params.Delay, "scanMode": scanMode}, func(ctx context.Context, session *appSession) {
 				runDetailedTest(ctx, session, params.DC, params.Port, params.Delay, scanMode)
@@ -245,8 +267,20 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if strings.TrimSpace(params.URL) == "" {
 				params.URL = speedTestURL
 			}
+			if params.Datacenters != nil {
+				centers, err := resolveDetailDatacenters(session, params.Datacenters)
+				if err != nil {
+					session.sendWSMessage("error", err.Error())
+					return
+				}
+				params.Datacenters = centers
+			}
 			session.startTaskNamed("官方批量测速", "official", map[string]interface{}{"port": params.Port, "url": params.URL, "speedLimit": params.SpeedLimit, "speedMin": params.SpeedMin, "skipTested": params.SkipTested}, func(ctx context.Context, session *appSession) {
-				runOfficialSpeedBatch(ctx, session, params.Port, params.URL, params.SpeedLimit, params.SpeedMin, params.Results, params.SkipTested)
+				if params.Datacenters != nil {
+					runOfficialSpeedBatch(ctx, session, params.Port, params.URL, params.SpeedLimit, params.SpeedMin, params.Results, params.SkipTested, params.Datacenters)
+				} else {
+					runOfficialSpeedBatch(ctx, session, params.Port, params.URL, params.SpeedLimit, params.SpeedMin, params.Results, params.SkipTested)
+				}
 			})
 		},
 		"start_nsb_task": func(data json.RawMessage) {
@@ -278,6 +312,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 			if strings.TrimSpace(params.OutFile) == "" {
 				params.OutFile = "ip.csv"
+			}
+			if err := validateNSBInitialParameters(params); err != nil {
+				session.sendWSMessageDirect("retained_results_error", map[string]interface{}{"message": err.Error(), "admission": true, "initial": true})
+				return
 			}
 			hasFileContent := strings.TrimSpace(params.FileContent) != ""
 			hasSourceURL := strings.TrimSpace(params.SourceURL) != ""
@@ -574,6 +612,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// Authority belongs to this immutable handshake, never the shared background session.
+		if handleRetainedResultsAction(session, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }, stateReply) {
+			continue
+		}
+		if err := validateRetainedTaskGeneration(session, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }); err != nil {
+			stateReply("retained_results_error", map[string]interface{}{"message": err.Error(), "code": "stale", "admission": true, "initial": request.Type == "start_task" || request.Type == "start_nsb_task"})
+			continue
+		}
 		if handleWebStateAction(webState, request.Type, request.Data, func() bool { return huaweiWebAuthorized(r) }, stateReply) {
 			continue
 		}
