@@ -28,6 +28,8 @@ func TestWorkbenchRoutes(t *testing.T) {
 		{"/workbench", "text/html; charset=utf-8", "<title>CFData"},
 		{"/assets/app.js", "text/javascript; charset=utf-8", "./navigation.js"},
 		{"/assets/navigation.js", "text/javascript; charset=utf-8", "normalizeSection"},
+		{"/assets/api/socket.js", "text/javascript; charset=utf-8", "createSocketClient"},
+		{"/assets/features/tasks/state.js", "text/javascript; charset=utf-8", "reduceTask"},
 		{"/assets/platform/theme.js", "text/javascript; charset=utf-8", "cfdata-theme"},
 		{"/assets/styles/tokens.css", "text/css; charset=utf-8", "--cf-brand"},
 		{"/assets/styles/layout.css", "text/css; charset=utf-8", "@media"},

@@ -94,14 +94,14 @@ test('automatic theme accepts native dark appearance', async () => {
 - [x] Create local product CSS files with approved blue/slate palette, fine borders, quiet rounded surfaces; all controls visible on mobile, min 44px touch targets, visible focus and reduced motion support.
 - [x] Run Node tests, including malformed/unavailable storage, explicit dark/light overriding automatic, valid/invalid sections and no inline/external resources in entry.
 
-## Task 3: Milestone Verification And Push
+## Task 3: Milestone Verification And Local Commit
 
 - [x] Go tests/vet and Node tests pass; `gofmt` changed Go only.
 - [x] Browser serves the real `/workbench` resource tree; test navigation/theme, no runtime exceptions, 320px/375px/desktop and no horizontal overflow. Existing default still displays legacy interface.
 - [x] Build Windows local smoke executable in ignored build directory and Linux amd64 test artifact in `release_assets/cfdata-test` with CGO disabled; do not stage binaries.
 - [x] Independent review checks auth and path exposure, embed packaging, existing routes, storage failure, accessible controls and no simulated success states.
 - [x] Record actual verification and known limits in milestone status; stage only docs, new files and modified Go embedding/registration.
-Publication after verification: commit `Add embedded modular workbench foundation` and push `origin HEAD:refs/heads/frontend/rebuild`; verify remote SHA equals local SHA. Git publication is reported after the commit carrying this document, not inferred from its checklist.
+Local delivery: verified foundation committed as `c9e5a57`. Earlier push attempts were denied; latest user instruction explicitly supersedes the publication requirement: local commits only, no push, proceed to the next step.
 
 ## Completion Boundary
 

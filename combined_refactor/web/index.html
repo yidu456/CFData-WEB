@@ -18,7 +18,7 @@
       <span class="brand-mark" aria-hidden="true">CF</span><span>CFData</span>
     </a>
     <div class="header-actions">
-      <span class="stage-label">前端重构 · 第 1 阶段</span>
+      <span class="stage-label">前端重构 · 第 2 阶段</span>
       <label class="theme-control" for="theme-preference">外观
         <select id="theme-preference">
           <option value="auto">跟随系统</option>
@@ -40,9 +40,15 @@
       <p class="sidebar-note">新版按功能分阶段迁移。<br>当前全部能力仍在旧版。</p>
     </aside>
     <main id="main" class="content" tabindex="-1">
-      <div class="task-strip" role="status">
-        <strong>尚未接入后端</strong>
-        <span>新工作台不启动扫描、不上传数据；任务操作请使用完整旧版。</span>
+      <div class="task-strip" data-task-status>
+        <div class="task-summary" role="status"><strong data-connection>正在连接服务器</strong><span data-task-phase>暂无任务</span></div>
+        <p data-task-message>等待后端初始化</p>
+        <div class="task-actions" role="group" aria-label="全局任务操作">
+          <button class="button" type="button" data-task-action="follow" disabled>跟随后台任务</button>
+          <button class="button" type="button" data-task-action="background" disabled>转入后台</button>
+          <button class="button" type="button" data-task-action="stop" disabled>停止任务</button>
+          <button class="button" type="button" data-task-action="refresh" disabled>刷新状态</button>
+        </div>
       </div>
       <section id="workbench-panel" data-panel="workbench" aria-labelledby="workbench-title">
         <div class="title-row">
@@ -81,7 +87,23 @@
       </section>
       <section id="tasks-panel" data-panel="tasks" aria-labelledby="tasks-title" hidden>
         <div class="title-row"><div><h1 id="tasks-title" tabindex="-1">任务监控</h1><p class="sub">任务状态独立于优选模式，切换页面不应中断监控。</p></div></div>
-        <div class="surface detail-surface"><div class="surface-header"><h2>全局任务与后台运行</h2><span class="pending-label">第 2 阶段接入</span></div><div class="surface-body"><p>下一阶段接入真实连接、阶段进度、后台任务发现与跟随、停止操作和运行日志。这里暂不判断后端是否存在运行中的任务。</p><a class="button" href="/">在旧版监控任务</a></div></div>
+        <div class="surface detail-surface">
+          <div class="surface-header"><h2 data-task-label>全局任务</h2><span data-task-ownership>当前连接</span></div>
+          <div class="surface-body">
+            <p data-server-info>等待后端初始化</p>
+            <p class="environment-warning" data-proxy-warning hidden>测量环境提醒：后端报告地区或代理环境异常，结果可能受当前网络影响。请在旧版确认环境后开始扫描。</p>
+            <dl class="task-details"><dt>任务来源</dt><dd data-task-source>—</dd><dt>进度</dt><dd data-task-progress-text>0 / 待确定</dd></dl>
+            <progress class="task-progress" data-task-progress value="0" max="100" aria-label="当前阶段进度"></progress>
+            <p data-task-counts>尚无任务统计</p>
+            <p class="sub">跟随后接收未来事件和后端已有的最终结果，不回放完整历史。普通前台任务不跨页面连接共享；同一时间仅能运行一个任务，由后端校验。</p>
+            <a class="button" href="/">在旧版配置新任务与查看结果</a>
+          </div>
+        </div>
+        <section class="surface detail-surface task-log-surface" aria-labelledby="task-log-title">
+          <div class="surface-header"><h2 id="task-log-title">运行日志</h2><div class="task-log-actions"><label><input type="checkbox" data-log-autoscroll checked> 自动滚动</label><button class="button" type="button" data-log-clear>清空显示</button></div></div>
+          <ol class="task-log" data-task-log aria-label="最近 200 条运行日志"></ol>
+          <footer class="surface-footer">只保留本页最近 200 条日志，刷新后不恢复；清空显示不删除服务端数据。</footer>
+        </section>
       </section>
       <section id="targets-panel" data-panel="targets" aria-labelledby="targets-title" hidden>
         <div class="title-row"><div><h1 id="targets-title" tabindex="-1">发布目标</h1><p class="sub">集中管理目标，执行时选择；各平台保留自己的认证与发布方式。</p></div></div>
@@ -94,5 +116,10 @@
       <noscript><p class="task-strip">浏览器未启用 JavaScript，新工作台的导航与主题无法使用。<a href="/">打开旧版</a></p></noscript>
     </main>
   </div>
+  <dialog data-task-confirm aria-labelledby="task-confirm-title">
+    <h2 id="task-confirm-title">确认任务操作</h2>
+    <p data-task-confirm-text></p>
+    <div class="dialog-actions"><button class="button" type="button" data-task-confirm-cancel>取消</button><button class="button button-primary" type="button" data-task-confirm-ok>确认</button></div>
+  </dialog>
 </body>
 </html>

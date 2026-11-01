@@ -1,5 +1,7 @@
 import { normalizeSection } from './navigation.js';
 import { readThemePreference, applyThemePreference } from './platform/theme.js';
+import { createSocketClient } from './api/socket.js';
+import { mountTasks } from './features/tasks/view.js';
 
 let storage;
 try {
@@ -50,3 +52,17 @@ for (const button of modes) {
     }
   });
 }
+
+const monitor = mountTasks({ root: document, client: { send: (...args) => client.send(...args) } });
+const client = createSocketClient({
+  url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
+  onState: value => {
+    monitor.onState(value);
+    if (value === 'auth-required') window.location.assign('/auth/login');
+  },
+  onMessage: monitor.onMessage,
+  onError: monitor.onError,
+});
+client.start();
+window.addEventListener('pagehide', () => { client.close(); monitor.destroy(); });
+window.addEventListener('pageshow', event => { if (event.persisted) client.start(); });

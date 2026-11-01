@@ -79,7 +79,9 @@ test('entry keeps styles and scripts modular and has no external runtime resourc
   assert.doesNotMatch(html, /<style\b|\sstyle=|\son\w+=|https?:\/\//i);
   assert.match(html, /href="\/"/);
   assert.match(html, /role="status"/);
-  assert.match(html, /尚未接入/);
+  assert.match(html, /等待后端初始化/);
+  assert.match(html, /data-task-action="stop" disabled/);
+  assert.match(html, /data-task-log/);
   for (const section of ['workbench', 'tasks', 'targets', 'settings']) {
     assert.match(html, new RegExp(`data-section="${section}"`));
     assert.match(html, new RegExp(`data-panel="${section}"`));

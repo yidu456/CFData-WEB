@@ -47,6 +47,24 @@ a { color: var(--cf-brand); }
 .detail-surface .surface-body { display: grid; justify-items: start; gap: 18px; }
 .detail-surface p { max-width: 66ch; }
 .available-label { color: var(--cf-good); font-size: 12px; }
+.task-strip { display: block; }
+.task-summary { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.task-strip p { color: var(--cf-muted); margin-top: 8px; overflow-wrap: anywhere; }
+.task-actions, .task-log-actions, .dialog-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.task-log-actions { margin-top: 0; }
+.task-details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 18px; width: 100%; margin: 0; }
+.task-details dt { color: var(--cf-muted); }
+.task-details dd { margin: 0; overflow-wrap: anywhere; }
+.task-progress { width: 100%; height: 14px; accent-color: var(--cf-brand); }
+.task-log-surface { margin-top: 18px; }
+.task-log { max-height: 320px; overflow: auto; padding: 18px 18px 18px 38px; margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.task-log li + li { margin-top: 8px; }
+.environment-warning { padding: 12px; border-left: 3px solid var(--cf-brand); background: var(--cf-tint); }
+[data-task-status][data-outcome='failed'], [data-task-status][data-outcome='partial'], [data-task-status][data-outcome='stopped'], [data-task-status][data-outcome='rate-limited'] { border-left-width: 6px; }
+dialog { max-width: min(480px, calc(100% - 32px)); padding: 24px; border: 1px solid var(--cf-rule); border-radius: var(--cf-radius); background: var(--cf-surface); color: var(--cf-ink); }
+dialog p { margin-top: 14px; }
+dialog::backdrop { background: rgb(16 29 43 / 55%); }
+.dialog-actions { justify-content: flex-end; }
 
 @media (max-width: 980px) {
   .app-header { align-items: flex-start; }
