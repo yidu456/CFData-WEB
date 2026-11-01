@@ -100,3 +100,11 @@ test('local start request owns the task before the first progress or error frame
   state = reduceTask(state,{type:'task_error',data:'地址库下载失败'});
   assert.equal(state.outcome,'failed'); assert.equal(state.running,false);
 });
+
+test('stopped background replay keeps terminal label while updating available result count', async () => {
+  const {createTaskState,reduceTask}=await load();
+  let state=reduceTask(createTaskState(),{type:'background_task_following',data:{running:false,phase:'已停止',mode:'official',startedAt:'stopped'}});
+  state=reduceTask(state,{type:'scan_complete_wait_dc',data:[{DataCenter:'HKG'}]});
+  state=reduceTask(state,{type:'test_complete',data:[{IP:'192.0.2.1'}]});
+  assert.equal(state.outcome,'stopped');assert.equal(state.phase,'已停止');assert.equal(state.testCount,1);
+});

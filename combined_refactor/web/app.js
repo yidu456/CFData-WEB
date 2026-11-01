@@ -60,7 +60,7 @@ const client = createSocketClient({
   url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
   onState: value => {
     monitor.onState(value);
-    official.onState();
+    official.onState(value);
     if (value === 'auth-required') window.location.assign('/auth/login');
   },
   onMessage: message => { monitor.onMessage(message); official.onMessage(message); },

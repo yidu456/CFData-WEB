@@ -68,8 +68,8 @@ export function reduceTask(state, { type, data }) {
     case 'test_result': return { ...state, testCount: state.testCount + 1 };
     case 'speed_test_result': return { ...state, speedCount: state.speedCount + 1 };
     case 'nsb_scan_result': return { ...state, resultCount: state.resultCount + (state.phase === '测速中' ? 0 : 1), speedCount: state.speedCount + (state.phase === '测速中' ? 1 : 0) };
-    case 'scan_complete_wait_dc': return { ...state, phase: '扫描完成', message: '扫描结果已就绪，选择数据中心仍请使用旧版' };
-    case 'test_complete': return { ...state, phase: '详细测试完成', testCount: Array.isArray(data) ? data.length : state.testCount };
+    case 'scan_complete_wait_dc': return specific(state.outcome) ? state : { ...state, phase: '扫描完成', message: '扫描结果已就绪，可选择数据中心进行详细测试' };
+    case 'test_complete': return { ...state, ...(!specific(state.outcome) ? { phase: '详细测试完成' } : {}), testCount: Array.isArray(data) ? data.length : state.testCount };
     case 'official_speed_complete':
       return finish({ ...state, speedQualified: count(p.qualified) }, p.rateLimited ? 'rate-limited' : (count(p.limit) > count(p.qualified) ? 'partial' : 'complete'), p.rateLimited ? '测速已限流，保留已取得结果' : '测速结束');
     case 'nsb_speed_complete': return finish({ ...state, speedQualified: count(p.totalQualified ?? p.qualified) }, count(p.limit) > count(p.qualified) ? 'partial' : 'complete', '非标测速结束');

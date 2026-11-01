@@ -9,10 +9,11 @@ await mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
 try {
   const context=await browser.newContext({viewport:{width:1366,height:950}});
-  const commands=[],errors=[]; let socket;
+  const commands=[],errors=[]; let socket, connectionCount=0;
   const emit=(type,data)=>socket.send(JSON.stringify({type,data}));
   await context.routeWebSocket('**/ws',ws=>{
     socket=ws;
+    connectionCount++;
     ws.onMessage(raw=>{
       const message=JSON.parse(raw); commands.push(message);
       if(message.type==='get_background_task_status')emit('background_task_missing',null);
@@ -45,6 +46,19 @@ try {
   await page.locator('[data-dc="HKG"]').click();
   assert.equal(await page.locator('[data-dc="HKG"]').getAttribute('aria-pressed'),'true');
   assert.match(await page.locator('[data-official-selection]').innerText(),/HKG/);
+  await page.locator('[data-official-test]').click();
+  assert.deepEqual(commands.find(m=>m.type==='start_test').data,{dc:'HKG',port:443,delay:0,scanMode:'httping'});
+  const detail={IP:'192.0.2.1',Port:443,DataCenter:'HKG',City:'香港',MinLatency:12000000,MaxLatency:20000000,AvgLatency:15000000,LossRate:.05,Speed:''};
+  emit('test_progress',{current:1,total:2});emit('test_result',detail);
+  await page.waitForFunction(()=>document.querySelectorAll('[data-official-test-rows] tr').length===1);
+  assert.match(await page.locator('[data-official-test-rows]').innerText(),/12\.00ms/);
+  assert.match(await page.locator('[data-official-test-rows]').innerText(),/5\.00%/);
+  emit('test_complete',[detail]);emit('task_complete',null);
+  await page.waitForFunction(()=>!document.querySelector('[data-official-test]').disabled);
+  assert.match(await page.locator('[data-official-selection]').innerText(),/已测试/);
+  await page.locator('[data-official-test]').click();
+  emit('test_result',detail);emit('task_stopped',null);
+  await page.waitForFunction(()=>document.querySelectorAll('[data-official-test-rows] tr').length===1&&!document.querySelector('[data-official-test]').disabled);
   for(const width of [320,375,768,1366]){
     await page.setViewportSize({width,height:950});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),true);
@@ -64,6 +78,16 @@ try {
   await page.waitForFunction(()=>!document.querySelector('[data-official-start]').disabled);
   assert.match(await page.locator('[data-task-phase]').innerText(),/任务失败/);
   assert.equal(await page.locator('[data-official-rows] tr').count(),0);
+  emit('scan_complete_wait_dc',[{DataCenter:'HKG',IPCount:1,MinLatency:12}]);
+  await page.waitForFunction(()=>document.querySelector('[data-dc="HKG"]'));
+  await page.locator('[data-dc="HKG"]').click();
+  const connections=connectionCount;
+  socket.close({code:1001,reason:'reconnect candidate context'});
+  await page.waitForTimeout(3400);
+  assert.equal(connectionCount,connections+1);
+  await page.waitForFunction(()=>!document.querySelector('[data-official-start]').disabled);
+  assert.equal(await page.locator('[data-official-test]').isEnabled(),false);
+  assert.equal(await page.locator('[data-dc="HKG"]').count(),1);
   assert.deepEqual(errors,[]);
   await context.close();
   console.log('PASS: official request/ports/zero-delay, global mutex/control, partial rows, safe text/DC selection, 320/375/768/1366px, retry/error terminal.');

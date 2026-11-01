@@ -67,3 +67,38 @@ test('large IPv6 result sets retain endpoints without copying the full collectio
   for(let i=0;i<65536;i++)state=reduceOfficial(state,{type:'scan_result',data:{IP:`2001:db8::${i.toString(16)}`,Port:443,TCPDuration:i*1000000}});
   assert.equal(state.rows,rows);assert.equal(state.rows.length,65536);assert.equal(visibleScanRows(state).length,100);
 });
+
+test('detailed request uses selected valid DC and preserves zero delay', async () => {
+  const { buildTestRequest }=await load();
+  assert.deepEqual(buildTestRequest({...base,delay:'0'},'HKG',[{DataCenter:'HKG'}]),{dc:'HKG',port:443,delay:0,scanMode:'tcping'});
+  assert.throws(()=>buildTestRequest(base,'NRT',[{DataCenter:'HKG'}]));
+});
+
+test('detailed rows normalize units, preserve partial/retest state and accept authoritative final rows', async () => {
+  const { createOfficialState,reduceOfficial,visibleTestRows }=await load();
+  let state=reduceOfficial(createOfficialState(),{type:'test_requested',data:{dc:'HKG'}});
+  const row={IP:'192.0.2.1',Port:443,DataCenter:'HKG',Region:'亚洲',City:'香港',MinLatency:12000000,MaxLatency:20000000,AvgLatency:15000000,LossRate:.05,Speed:'失败'};
+  state=reduceOfficial(state,{type:'test_result',data:row});
+  assert.equal(state.testRows[0].minMS,12);assert.equal(state.testRows[0].avgMS,15);assert.equal(state.testRows[0].maxMS,20);assert.equal(state.testRows[0].lossPercent,5);assert.equal(state.testRows[0].Speed,'失败');
+  state=reduceOfficial(state,{type:'task_stopped'});
+  assert.equal(state.testingDC,'');assert.equal(state.testRows.length,1);
+  state=reduceOfficial(state,{type:'test_requested',data:{dc:'HKG'}});
+  assert.equal(state.testRows.length,0);
+  state=reduceOfficial(state,{type:'test_result',data:row});
+  state=reduceOfficial(state,{type:'test_complete',data:[{...row,AvgLatency:10000000}, {...row,IP:'2001:db8::1',MinLatency:null,LossRate:null}]});
+  assert.equal(state.testRows.length,2);assert.equal(state.testingDC,'');assert.equal(state.testedDCs.has('HKG'),true);
+  assert.equal(visibleTestRows(state)[0].avgMS,10);assert.equal(state.testRows[1].minMS,null);assert.equal(state.testRows[1].lossPercent,null);
+});
+
+test('reconnect retains displayed rows but invalidates foreground scan candidates', async () => {
+  const {createOfficialState,reduceOfficial}=await load();
+  let state=reduceOfficial(createOfficialState(),{type:'scan_requested'});
+  assert.equal(state.candidatesReady,true);
+  state=reduceOfficial(state,{type:'test_requested',data:{dc:'HKG'}});
+  state=reduceOfficial(state,{type:'connection_lost'});
+  assert.equal(state.candidatesReady,false);assert.equal(state.testingDC,'');
+  state=reduceOfficial(state,{type:'background_task_found',data:{mode:'official',startedAt:'one'}});
+  assert.equal(state.candidatesReady,false);
+  state=reduceOfficial(state,{type:'background_task_following',data:{mode:'official',startedAt:'one'}});
+  assert.equal(state.candidatesReady,true);
+});

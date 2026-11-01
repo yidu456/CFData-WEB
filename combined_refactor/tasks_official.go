@@ -451,6 +451,9 @@ func runOfficialTask(ctx context.Context, session *appSession, ipType int, scanM
 }
 
 func runDetailedTest(ctx context.Context, session *appSession, selectedDC string, port int, delay int, scanMode string) {
+	session.testMutex.Lock()
+	session.testResults = nil
+	session.testMutex.Unlock()
 	var testIPList []string
 	scanByIP := make(map[string]ScanResult)
 	session.scanMutex.Lock()
@@ -531,6 +534,11 @@ func runDetailedTest(ctx context.Context, session *appSession, selectedDC string
 		resMutex.Unlock()
 	})
 
+	sortOfficialTestResults(results)
+
+	session.testMutex.Lock()
+	session.testResults = append([]TestResult(nil), results...)
+	session.testMutex.Unlock()
 	if wasCanceled || ctx.Err() != nil {
 		session.sendWSMessage("log", "详细测试已被终止，正在呈现当前可用测试结果...")
 		return
@@ -539,12 +547,6 @@ func runDetailedTest(ctx context.Context, session *appSession, selectedDC string
 		session.sendWSMessage("error", "详细测试完成，但没有任何 IP 通过延迟测试。")
 		return
 	}
-
-	sortOfficialTestResults(results)
-
-	session.testMutex.Lock()
-	session.testResults = append([]TestResult(nil), results...)
-	session.testMutex.Unlock()
 
 	session.sendWSMessage("test_complete", results)
 }
