@@ -101,8 +101,16 @@
                   <label>扫描方式<select name="scanMode"><option value="tcping">TCPing</option><option value="httping">HTTPing</option></select></label>
                   <label>结果字段<select name="compact"><option value="false">完整</option><option value="true">精简</option></select></label>
                   <label>后端输出文件<input name="outFile" type="text" value="ip.csv" required></label>
+                  <label>扫描后自动测速<select name="autoSpeed"><option value="off">关闭</option><option value="on">开启（联动复验）</option></select></label>
+                  <label>测速并发<input name="speedTest" type="number" min="0" max="1000" value="5" required></label>
+                  <label>测速源<select name="nsbSpeedPreset"><option value="auto">自动选择</option><option value="speed.cloudflare.com/__down?bytes=99999999">Cloudflare</option><option value="cf.090227.xyz/__down?bytes=99999999">CM 提供</option><option value="speed.okl.abrdns.com">移动专属</option><option value="custom">自定义</option></select></label>
+                  <label>测速网址<input name="speedURL" type="text" value="auto" required></label>
+                  <label>合格速度（MB/s）<input name="speedMin" type="number" min="0.01" step="0.01" value="0.1" required></label>
+                  <label>达标结果数量<input name="speedLimit" type="number" min="0" value="5" required></label>
+                  <label>链路复验<select name="relinkPreset"><option value="off">关闭（自动测速联动公共探针）</option><option value="default">公共探针</option><option value="custom">自定义探针</option></select></label>
+                  <label>自定义探针<input name="relinkHost" type="text" placeholder="例如 probe.example.com"></label>
                   <button class="button button-primary" data-nsb-start type="submit" disabled>开始非标扫描</button>
-                  <p class="sub" role="status" data-nsb-validation>本步骤只扫描；复验/测速将在下一步骤接入。输出文件写在后端，不是浏览器下载。</p>
+                  <p class="sub" role="status" data-nsb-validation>自动测速开启时联动链路复验；关闭时并发传0。并发1更利于准确测量。输出文件写在后端，不是浏览器下载。</p>
                 </form>
               </div>
               <a class="text-link" href="/">前往旧版配置任务</a>
@@ -121,7 +129,7 @@
             <footer class="surface-footer">全部复制、导出和发布操作仍可使用<a href="/">完整旧版</a>；非标与自动上传尚未迁移。</footer>
           </section>
           <section class="surface results-surface" data-results-mode="nonstandard" aria-labelledby="nsb-results-title" hidden>
-            <div class="surface-header"><h2 id="nsb-results-title">非标结果</h2></div>
+            <div class="surface-header"><h2 id="nsb-results-title">非标结果</h2><div class="task-actions"><button class="button" data-nsb-relink type="button" disabled>链路复验</button><button class="button" data-nsb-speed type="button" disabled>一键测速</button><button class="button" data-nsb-continue type="button" disabled>继续测速</button></div></div>
             <div class="surface-body"><p class="sub" data-nsb-count>尚无非标结果</p></div>
             <div class="scan-table-wrap" tabindex="0" role="region" aria-label="非标全字段结果表格，可横向滚动"><table class="scan-table"><thead><tr data-nsb-headers></tr></thead><tbody data-nsb-rows></tbody></table></div>
             <footer class="surface-footer">最终表格保留后端全部字段；当前最多显示最近 100 条，完整数据保存在本页。复制、导出和发布仍在<a href="/">完整旧版</a>。</footer>
@@ -164,5 +172,6 @@
     <p data-task-confirm-text></p>
     <div class="dialog-actions"><button class="button" type="button" data-task-confirm-cancel>取消</button><button class="button button-primary" type="button" data-task-confirm-ok>确认</button></div>
   </dialog>
+  <dialog data-nsb-confirm aria-labelledby="nsb-confirm-title"><h2 id="nsb-confirm-title">确认链路复验</h2><p>对全部当前非标结果复验 TCP/TLS/HTTP；不可用候选会被剔除。启用自动测速时，复验后会继续测速。确认继续？</p><div class="dialog-actions"><button class="button" data-nsb-confirm-cancel type="button">取消</button><button class="button button-primary" data-nsb-confirm-ok type="button">确认复验</button></div></dialog>
 </body>
 </html>

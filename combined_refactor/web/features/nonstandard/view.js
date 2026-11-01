@@ -1,4 +1,4 @@
-import { buildNSBRequest, createNSBState, reduceNSB, liveFields } from './model.js';
+import { buildNSBRequest, buildNSBExecution, hasNSBPendingRows, buildNSBFollowup, createNSBState, reduceNSB, liveFields } from './model.js';
 import { safeTaskText } from '../tasks/state.js';
 
 export function mountNSB({ root, monitor }) {
@@ -6,7 +6,15 @@ export function mountNSB({ root, monitor }) {
   const form = root.querySelector('[data-nsb-form]'), file = root.querySelector('[data-nsb-file]'), source = root.querySelector('[data-nsb-source]');
   const inputStatus = root.querySelector('[data-nsb-input-status]'), status = root.querySelector('[data-nsb-validation]');
   const start = root.querySelector('[data-nsb-start]');
-  function ready() { start.disabled = !monitor.isReady() || reading; }
+  const dialog = root.querySelector('[data-nsb-confirm]');
+  let confirmRows;
+  function ready() {
+    start.disabled = !monitor.isReady() || reading;
+    const available = state.headers.length ? state.csvRows.length : state.rows.length;
+    root.querySelector('[data-nsb-speed]').disabled = !monitor.isReady() || !available || Number(form.elements.speedLimit.value) <= 0;
+    root.querySelector('[data-nsb-continue]').disabled = !monitor.isReady() || !available || !hasNSBPendingRows(state) || Number(form.elements.speedLimit.value) <= 0;
+    root.querySelector('[data-nsb-relink]').disabled = !monitor.isReady() || !available;
+  }
   function render() {
     ready();
     const headers = state.headers.length ? state.headers : liveFields;
@@ -55,15 +63,44 @@ export function mountNSB({ root, monitor }) {
     event.preventDefault(); if (!monitor.isReady() || reading) return;
     try {
       const values = Object.fromEntries(new FormData(form));
-      const data = buildNSBRequest(values, source.value === 'url' ? { sourceURL: values.sourceURL } : input);
+      const data = { ...buildNSBRequest(values, source.value === 'url' ? { sourceURL: values.sourceURL } : input), ...buildNSBExecution(values) };
       if (!monitor.startTask('start_nsb_task', data, '非标优选', 'nsb')) return;
       state = reduceNSB(state, { type: 'nsb_requested', data: { startedAt: monitor.getState().startedAt } });
       status.textContent = '已提交非标扫描；后端将解析/去重/解析域名并写入指定结果文件';
       render();
     } catch (error) { status.textContent = error.message; }
   });
+  form.elements.autoSpeed.addEventListener('change', () => {
+    if (form.elements.autoSpeed.value === 'on' && Number(form.elements.speedTest.value) <= 0) form.elements.speedTest.value = '5';
+  });
+  form.elements.nsbSpeedPreset.addEventListener('change', () => { if (form.elements.nsbSpeedPreset.value !== 'custom') form.elements.speedURL.value = form.elements.nsbSpeedPreset.value; });
+  form.elements.speedURL.addEventListener('input', () => { form.elements.nsbSpeedPreset.value = 'custom'; });
+  form.addEventListener('input', ready);
+  function followup(action, continued) {
+    if (!monitor.isReady()) return;
+    try {
+      const values = Object.fromEntries(new FormData(form));
+      const data = buildNSBFollowup(values, state, action, continued);
+      if (!monitor.startTask(action === 'speed' ? 'start_nsb_speed_batch' : 'start_nsb_reallink', data, action === 'speed' ? '非标批量测速' : '链路复验', 'nsb')) return;
+      state = reduceNSB(state, { type: 'nsb_followup_requested', data: { action, continued } });
+      status.textContent = action === 'speed' ? '已提交非标测速，更新原端点结果；继续测速跳过已测试行' : '已提交链路复验，不可用候选将被剔除';
+      render();
+    } catch (error) { status.textContent = error.message; }
+  }
+  root.querySelector('[data-nsb-speed]').addEventListener('click', () => followup('speed', false));
+  root.querySelector('[data-nsb-continue]').addEventListener('click', () => followup('speed', true));
+  root.querySelector('[data-nsb-relink]').addEventListener('click', () => { confirmRows = state.headers.length ? state.csvRows : state.rows; dialog.showModal(); });
+  root.querySelector('[data-nsb-confirm-cancel]').addEventListener('click', () => dialog.close());
+  root.querySelector('[data-nsb-confirm-ok]').addEventListener('click', () => { dialog.close(); if (confirmRows === (state.headers.length ? state.csvRows : state.rows)) followup('relink', false); });
   sourceChanged(); render();
-  return { onState: ready, onMessage(message) {
+  return { onState(value) { if (value !== 'connected') { confirmRows = undefined; if (dialog.open) dialog.close(); } ready(); }, onMessage(message) {
+    if (message.type === 'init_config' || message.type === 'speed_url_status') {
+      const payload = message.type === 'init_config' ? message.data?.speedURLStatus : message.data;
+      for (const entry of payload?.urls || []) {
+        const option = [...form.elements.nsbSpeedPreset.options].find(option => option.value === entry.url);
+        if (option) option.textContent = `${entry.label}${entry.tested && !entry.available ? '（不可用）' : entry.tested ? '（可用）' : '（未检测）'}`;
+      }
+    }
     const next = reduceNSB(state, message);
     if (next !== state) { state = next; if (!frame) frame = requestAnimationFrame(() => { frame = undefined; render(); }); }
     else ready();

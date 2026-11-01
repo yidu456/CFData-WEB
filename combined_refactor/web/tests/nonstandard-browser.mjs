@@ -36,5 +36,20 @@ try{
  await page.locator('[data-nsb-source]').selectOption('url');await page.locator('[data-nsb-form] [name="sourceURL"]').fill('https://example.test/list');await page.locator('[data-nsb-start]').click();
  const second=commands.filter(m=>m.type==='start_nsb_task').at(-1).data;assert.equal(second.fileContent,'');assert.equal(second.sourceURL,'https://example.test/list');
  emit('error','无有效输入');emit('task_complete',null);await page.waitForFunction(()=>!document.querySelector('[data-nsb-start]').disabled);
+ const validHeaders=['IP地址','端口号','TLS','丢包率','扫描方式','网络延迟','下载速度','出站IP','IP类型','原始输入','数据中心','源IP位置','地区','城市','ASN号码','ASN组织'];
+ emit('nsb_csv_complete',{headers:validHeaders,rows:[['192.0.2.1','443','true','0%','TCPing','12ms','未测速','','IPv4','source','HKG','HK','亚洲','香港','1','org']],status:'complete',file:'ip.csv'});
+ await page.waitForFunction(()=>!document.querySelector('[data-nsb-speed]').disabled);
+ await page.locator('[data-nsb-speed]').click();assert.equal(commands.filter(m=>m.type==='start_nsb_speed_batch').at(-1).data.results[0].originalInput,'source');
+ emit('nsb_scan_result',{ip:'192.0.2.1',port:'443',speed:'1MB/s'});emit('nsb_speed_complete',{qualified:1,totalQualified:1,limit:5});emit('task_complete',null);
+ await page.waitForFunction(()=>document.querySelector('[data-nsb-rows]').textContent.includes('1MB/s'));
+ await page.locator('[data-nsb-relink]').click();await page.locator('[data-nsb-confirm-cancel]').click();assert.equal(commands.some(m=>m.type==='start_nsb_reallink'),false);
+ await page.locator('[data-nsb-relink]').click();await page.locator('[data-nsb-confirm-ok]').click();assert.equal(commands.filter(m=>m.type==='start_nsb_reallink').at(-1).data.relinkHost,'probe.609909.xyz');
+ emit('task_stopped',null);
+ await page.waitForFunction(()=>!document.querySelector('[data-nsb-relink]').disabled);
+ await page.locator('[data-nsb-relink]').click();socket.close({code:1001,reason:'stale relink confirmation'});
+ await page.waitForFunction(()=>!document.querySelector('[data-nsb-confirm]').open);
+ await page.waitForTimeout(3400);
+ emit('nsb_csv_complete',{headers:validHeaders,rows:[],status:'failed',file:'ip.csv'});
+ await page.waitForFunction(()=>document.querySelector('[data-nsb-relink]').disabled&&document.querySelector('[data-nsb-speed]').disabled);
  assert.deepEqual(errors,[]);await context.close();console.log('PASS: NSB file/URL exclusivity,TLS defaults,validated request,live dedupe/safe text,25-column final,partial/mode persistence,responsive,error.');
 }finally{await browser.close();}
