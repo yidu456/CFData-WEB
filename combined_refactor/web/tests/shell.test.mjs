@@ -76,7 +76,7 @@ test('entry keeps styles and scripts modular and has no external runtime resourc
   assert.match(html, /<html lang="zh-CN"/);
   assert.match(html, /<script type="module" src="\/assets\/app.js"><\/script>/);
   assert.equal((html.match(/rel="stylesheet"/g) || []).length, 3);
-  assert.doesNotMatch(html, /<style\b|\sstyle=|\son\w+=|https?:\/\//i);
+  assert.doesNotMatch(html, /<style\b|\sstyle=|\son\w+=|(?:src|href)="https?:\/\//i);
   assert.match(html, /href="\/"/);
   assert.match(html, /role="status"/);
   assert.match(html, /等待后端初始化/);

@@ -3,6 +3,7 @@ import { readThemePreference, applyThemePreference } from './platform/theme.js';
 import { createSocketClient } from './api/socket.js';
 import { mountTasks } from './features/tasks/view.js';
 import { mountOfficial } from './features/official/view.js';
+import { mountNSB } from './features/nonstandard/view.js';
 
 let storage;
 try {
@@ -51,19 +52,22 @@ for (const button of modes) {
     for (const panel of document.querySelectorAll('[data-mode-panel]')) {
       panel.hidden = panel.dataset.modePanel !== button.dataset.mode;
     }
+    for (const panel of document.querySelectorAll('[data-results-mode]')) panel.hidden = panel.dataset.resultsMode !== button.dataset.mode;
   });
 }
 
 const monitor = mountTasks({ root: document, client: { send: (...args) => client.send(...args) } });
 const official = mountOfficial({ root: document, monitor });
+const nonstandard = mountNSB({ root: document, monitor });
 const client = createSocketClient({
   url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
   onState: value => {
     monitor.onState(value);
     official.onState(value);
+    nonstandard.onState(value);
     if (value === 'auth-required') window.location.assign('/auth/login');
   },
-  onMessage: message => { monitor.onMessage(message); official.onMessage(message); },
+  onMessage: message => { monitor.onMessage(message); official.onMessage(message); nonstandard.onMessage(message); },
   onError: monitor.onError,
 });
 client.start();

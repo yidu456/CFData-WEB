@@ -108,10 +108,10 @@ export function mountTasks({ root, client }) {
     onError: log,
     getState: () => state,
     isReady: () => connection === 'connected' && state.initialized && !state.running && !state.stopping && !pending,
-    startTask(type, data, label) {
+    startTask(type, data, label, mode = 'official') {
       if (connection !== 'connected' || !state.initialized || state.running || state.stopping || pending) return false;
       if (!client.send(type, data)) { log('任务未发送，请检查连接后重试'); return false; }
-      state = reduceTask(state, { type: 'request_start', data: { label, mode: 'official', startedAt: new Date().toISOString() } });
+      state = reduceTask(state, { type: 'request_start', data: { label, mode, startedAt: new Date().toISOString() } });
       pending = type;
       render();
       return true;
