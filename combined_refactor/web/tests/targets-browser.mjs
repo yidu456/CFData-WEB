@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const browser=await chromium.launch({headless:true,channel:process.env.BROWSER_CHANNEL||'msedge'});
+const base=process.argv[2]||'http://127.0.0.1:13336';
+try {
+ const context=await browser.newContext({viewport:{width:1366,height:950}});let commands=[];
+ await context.addInitScript(()=>{if(!localStorage.getItem('seeded')){localStorage.setItem('cfdata-github-accounts',JSON.stringify([{name:'old github',repo:'owner/repo',path:'ip.txt',token:'fake-legacy-secret'}]));localStorage.setItem('cfdata-edgetunnel-accounts',JSON.stringify([{name:'old edge',host:'edge.example.org',mode:'append'}]));localStorage.setItem('seeded','1');}});
+ await context.routeWebSocket('**/ws',ws=>{ws.onMessage(raw=>commands.push(JSON.parse(raw).type));ws.send(JSON.stringify({type:'init_config',data:{version:'target-test'}}));});
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/workbench');await page.locator('[data-section="targets"]').click();
+ await page.locator('[data-target-select]').waitFor({timeout:2500});assert.equal(await page.locator('[data-target-select] option').count(),3);
+ const initial=await page.evaluate(()=>JSON.parse(localStorage.getItem('cfdata-publishing-targets')));
+ assert.equal(initial.targets.length,2);assert.doesNotMatch(JSON.stringify(initial),/fake-legacy-secret/);
+ const form=page.locator('[data-target-form]'), input=name=>form.locator(`[name="${name}"]`);
+ await page.locator('[data-target-select]').selectOption(initial.targets[0].id);assert.equal(await input('secret').inputValue(),'');
+ await input('name').fill('renamed github');await form.locator('[data-target-save]').click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cfdata-publishing-targets')).targets[0].name==='renamed github');
+ assert.equal((await page.evaluate(()=>JSON.parse(localStorage.getItem('cfdata-publishing-targets')).targets[0].id)),initial.targets[0].id);
+ await page.locator('[data-target-new]').click();await input('provider').selectOption('github');await input('name').fill('second repo');await input('repo').fill('owner/second');await input('path').fill('result/ip.csv');await input('secret').fill('fake-new-secret');await input('remember').check();await form.locator('[data-target-save]').click();
+ await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cfdata-publishing-targets')).targets.length===3);assert.equal(await input('secret').inputValue(),'');
+ const stored=await page.evaluate(()=>localStorage.getItem('cfdata-publishing-targets'));assert.doesNotMatch(stored,/fake-new-secret/);assert.match(stored,/credential/);
+ const id=await page.locator('[data-target-select]').inputValue();await page.reload();await page.locator('[data-section="targets"]').click();assert.equal(await page.locator('[data-target-select] option').count(),4);
+ await page.locator('[data-target-select]').selectOption(id);await input('forget').check();await form.locator('[data-target-save]').click();await page.waitForFunction(id=>!JSON.parse(localStorage.getItem('cfdata-publishing-targets')).targets.find(t=>t.id===id).credential,id);
+ await page.locator('[data-target-delete]').click();await page.locator('[data-target-delete-dialog] [data-target-delete-ok]').click();await page.waitForFunction(()=>JSON.parse(localStorage.getItem('cfdata-publishing-targets')).targets.length===2);
+ await page.reload();await page.locator('[data-section="targets"]').click();assert.equal(await page.locator('[data-target-select] option').count(),3);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('cfdata-github-accounts'))[0].token),'fake-legacy-secret');
+ await mkdir('../build/workbench-targets',{recursive:true});
+ for(const width of [320,375,768,1366]){await page.setViewportSize({width,height:950});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth),true);await page.screenshot({path:`../build/workbench-targets/targets-${width}.png`,fullPage:true});}
+ assert.equal(commands.some(type=>type==='github_upload'||type==='edgetunnel_upload'),false);assert.deepEqual(errors,[]);
+ await context.close();
+ const blocked=await browser.newContext();await blocked.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw Error('blocked');}}));
+ await blocked.routeWebSocket('**/ws',ws=>ws.send(JSON.stringify({type:'init_config',data:{version:'blocked'}})));
+ const blockedPage=await blocked.newPage();await blockedPage.goto(base+'/workbench');await blockedPage.locator('[data-section="targets"]').click();
+ const blockedForm=blockedPage.locator('[data-target-form]');await blockedForm.locator('[name="name"]').fill('session');await blockedForm.locator('[name="repo"]').fill('owner/repo');await blockedForm.locator('[name="secret"]').fill('fake-session');await blockedForm.locator('[data-target-save]').click();
+ await blockedPage.waitForFunction(()=>document.querySelector('[data-target-select]').options.length===2);assert.match(await blockedPage.locator('[data-target-status]').innerText(),/本页|保存/);await blocked.close();
+ const noCrypto=await browser.newContext();await noCrypto.addInitScript(()=>Object.defineProperty(window,'crypto',{value:undefined}));
+ await noCrypto.routeWebSocket('**/ws',ws=>ws.send(JSON.stringify({type:'init_config',data:{version:'no-crypto'}})));
+ const noCryptoPage=await noCrypto.newPage();await noCryptoPage.goto(base+'/workbench');await noCryptoPage.locator('[data-section="targets"]').click();
+ const sessionForm=noCryptoPage.locator('[data-target-form]');await sessionForm.locator('[name="name"]').fill('session');await sessionForm.locator('[name="repo"]').fill('owner/repo');await sessionForm.locator('[name="secret"]').fill('fake-secret');await sessionForm.locator('[name="remember"]').check();await sessionForm.locator('[data-target-save]').click();
+ await noCryptoPage.waitForFunction(()=>document.querySelector('[data-target-select]').options.length===2,null,{timeout:2500});assert.match(await noCryptoPage.locator('[data-target-status]').innerText(),/加密/);await noCrypto.close();
+ console.log('PASS targets: non-destructive legacy migration, stable IDs, encrypted/session inputs, CRUD/forget, blocked storage, no upload, responsive.');
+} finally {await browser.close();}

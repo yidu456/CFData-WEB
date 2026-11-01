@@ -5,6 +5,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .official-form { display: grid; gap: 14px; margin-top: 18px; }
 .official-form label { display: grid; gap: 5px; font-size: 12px; color: var(--cf-muted); }
 .official-form input, .official-form select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; background: var(--cf-surface); border: 1px solid var(--cf-rule); border-radius: 6px; color: var(--cf-ink); }
+.target-picker { display:flex; align-items:end; flex-wrap:wrap; gap:10px; margin-top:14px; }
+.target-picker label { flex:1; display:grid; gap:5px; min-width:0; }
+.target-picker select { width:100%; min-width:0; padding:8px; background:var(--cf-surface); border:1px solid var(--cf-rule); border-radius:6px; }
+.target-fields { display:grid; gap:14px; }
+.target-form .target-check { display:flex; align-items:center; gap:8px; }
+.target-form input[type='checkbox'] { width:auto; min-height:20px; flex-shrink:0; }
+[data-target-summary],[data-target-storage-warning] { overflow-wrap:anywhere; }
 .dc-choice { border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-ground); padding: 10px 12px; text-align: left; overflow-wrap: anywhere; }
 .dc-choice[aria-pressed='true'] { border-color: var(--cf-brand); color: var(--cf-brand); background: var(--cf-tint); }
 .detail-test-button { margin-top: 14px; }

@@ -162,7 +162,19 @@
       </section>
       <section id="targets-panel" data-panel="targets" aria-labelledby="targets-title" hidden>
         <div class="title-row"><div><h1 id="targets-title" tabindex="-1">发布目标</h1><p class="sub">集中管理目标，执行时选择；各平台保留自己的认证与发布方式。</p></div></div>
-        <div class="surface detail-surface"><div class="surface-header"><h2>GitHub 与 edgetunnel</h2><span class="pending-label">待迁移</span></div><div class="surface-body"><p>已有账号与发布配置仍由旧版管理。新工作台尚不读取或修改账号，不在此收集 Token 或密码。</p><a class="button" href="/">在旧版管理发布</a></div></div>
+        <div class="surface detail-surface"><div class="surface-header"><h2>GitHub 与 edgetunnel</h2><span class="available-label">目标管理已接入</span></div><div class="surface-body">
+          <p class="sub" data-target-storage-warning></p><p class="sub">可选加密记住凭据，不等于防护同源脚本或 XSS。此处保存配置，不会发送上传请求；手动/自动发布将在下一子步骤接入。</p>
+          <div class="target-picker"><label>已保存目标<select data-target-select aria-label="已保存目标"></select></label><button class="button" type="button" data-target-new>新建目标</button><button class="button" type="button" data-target-delete disabled>删除目标</button></div><p class="sub" data-target-summary></p>
+          <form data-target-form class="official-form target-form">
+            <label>平台<select name="provider"><option value="github">GitHub</option><option value="edgetunnel">edgetunnel</option></select></label>
+            <label>目标名称<input name="name" type="text" maxlength="120" required></label>
+            <div data-target-provider="github" class="target-fields"><label>仓库 owner/repo<input name="repo" type="text" required></label><label>分支<input name="branch" type="text" value="main" required></label><label>目标文件路径<input name="path" type="text" value="results/ip.txt" required></label><label>提交信息<input name="message" type="text" value="update cfdata results"></label><label>默认结果格式<select name="format"><option value="txt">TXT</option><option value="csv">CSV</option></select></label></div>
+            <div data-target-provider="edgetunnel" class="target-fields" hidden><label>服务域名<input name="host" type="text" placeholder="https://edge.example.org"></label><label>推送方式<select name="mode"><option value="overwrite">覆盖</option><option value="append">追加</option></select></label></div>
+            <label>Token / 密码（留空保留现有凭据）<input name="secret" type="password" autocomplete="new-password"></label>
+            <label class="target-check"><input name="remember" type="checkbox"> 加密记住新凭据；不勾选时仅本页可用</label><label class="target-check"><input name="forget" type="checkbox"> 忘记此目标的现有凭据</label>
+            <div class="task-actions"><button class="button button-primary" data-target-save type="submit">保存目标</button><button class="button" data-target-cancel type="button">取消编辑</button></div><p class="sub" role="status" data-target-status></p>
+          </form><a class="button" href="/">在旧版执行发布</a>
+        </div></div>
       </section>
       <section id="settings-panel" data-panel="settings" aria-labelledby="settings-title" hidden>
         <div class="title-row"><div><h1 id="settings-title" tabindex="-1">设置与诊断</h1><p class="sub">外观偏好、任务配置与服务端数据分别管理。</p></div></div>
@@ -200,5 +212,6 @@
       <div class="dialog-actions"><button class="button" type="button" data-output-close>关闭</button><button class="button button-primary" type="button" data-output-execute disabled>执行输出</button></div>
     </form>
   </dialog>
+  <dialog data-target-delete-dialog aria-labelledby="target-delete-title"><h2 id="target-delete-title">删除发布目标</h2><p>删除所选目标和新版保存的凭据；不删除旧版原账号数据，已引用该目标的后续操作需要重新选择。</p><div class="dialog-actions"><button class="button" type="button" data-target-delete-cancel>取消</button><button class="button button-primary" type="button" data-target-delete-ok>确认删除</button></div></dialog>
 </body>
 </html>

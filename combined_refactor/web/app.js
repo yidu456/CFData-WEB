@@ -5,6 +5,7 @@ import { mountTasks } from './features/tasks/view.js';
 import { mountOfficial } from './features/official/view.js';
 import { mountNSB } from './features/nonstandard/view.js';
 import { mountResultOutput } from './features/results/output-view.js';
+import { mountTargets } from './features/publishing/targets-view.js';
 
 let storage;
 try {
@@ -60,6 +61,7 @@ for (const button of modes) {
 const monitor = mountTasks({ root: document, client: { send: (...args) => client.send(...args) } });
 const official = mountOfficial({ root: document, monitor });
 const nonstandard = mountNSB({ root: document, monitor });
+mountTargets({root:document,storage});
 const output = mountResultOutput({root:document,
   getRows:type => type === 'nsb' ? nonstandard.getOutputRows() : official.getOutputRows(type),
   getSpeedMin:type => type === 'nsb' ? nonstandard.getSpeedMin() : official.getSpeedMin(),

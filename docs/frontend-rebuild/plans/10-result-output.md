@@ -42,8 +42,8 @@ Files: new `web/features/results/output-view.js`; modify `web/app.js`, official/
 
 - [x] Independent read-only review; fix findings with regression tests, re-review.
 - [x] `node --test web/tests/*.test.mjs`; Go `test -count=1 ./...`, `vet ./...`; Windows whole-package build, Linux amd64 CGO0 build `release_assets/cfdata-test`.
-- [ ] Record actual verification/limits in this plan and docs index, stage only related files, local commit `Add independent result copy and export workspace`.
-- [ ] Begin publishing plan immediately after commit; do not push or change remotes.
+- [x] Record actual verification/limits in this plan and docs index, stage only related files, local commit `Add independent result copy and export workspace`.
+- [x] Begin publishing plan immediately after commit; do not push or change remotes.
 
 ## Verification Record (2026-11-02)
 
