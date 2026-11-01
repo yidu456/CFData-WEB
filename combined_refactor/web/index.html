@@ -72,7 +72,15 @@
                   <label>测量方式<select name="scanMode"><option value="tcping">TCPing</option><option value="httping">HTTPing</option></select></label>
                   <p class="sub" data-official-measurement>TCPing 测量 TCP 建连延迟；合格延迟 0 表示不以该阈值筛除。</p>
                   <button class="button button-primary" type="submit" data-official-start disabled>开始官方扫描</button>
-                  <p class="sub" data-official-validation role="status">扫描后选择数据中心进行详细测试。自动测速与自动上传在后续步骤接入。</p>
+                  <p class="sub" data-official-validation role="status">扫描后选择数据中心进行详细测试。自动流程与自动上传在后续步骤接入。</p>
+                </form>
+                <h3 class="measurement-title">测速参数</h3>
+                <form class="official-form" data-speed-form>
+                  <label>测速源<select name="preset"><option value="auto">自动选择</option><option value="speed.cloudflare.com/__down?bytes=99999999">Cloudflare</option><option value="cf.090227.xyz/__down?bytes=99999999">CM 提供</option><option value="speed.okl.abrdns.com">移动专属</option><option value="custom">自定义</option></select></label>
+                  <label>测速网址<input name="url" value="auto" type="text" required></label>
+                  <label>合格速度（MB/s）<input name="speedMin" type="number" min="0.01" step="0.01" value="0.1" required></label>
+                  <label>达标结果数量<input name="speedLimit" type="number" min="0" step="1" value="5" required></label>
+                  <p class="sub">0 关闭批量测速；目标指达标数量，不是尝试数量。官方批量按顺序执行，无测速并发设置。</p>
                 </form>
               </div>
               <div id="nonstandard-panel" data-mode-panel="nonstandard" hidden>
@@ -89,10 +97,10 @@
               <table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">延迟</th></tr></thead><tbody data-official-rows></tbody></table>
             </div>
             <div class="surface-body"><h3>数据中心汇总</h3><div class="dc-choices" data-official-centers></div><p class="sub" data-official-selection>扫描完成后选择数据中心</p><button class="button button-primary detail-test-button" type="button" data-official-test disabled>开始详细测试</button><p class="sub">TCPing 测试 10 次，HTTPing 测试 3 次；使用当前端口、合格延迟与测量方式。停止后保留已收到的结果。</p></div>
-            <div class="surface-header"><h2>详细测试结果</h2></div>
+            <div class="surface-header"><h2>详细测试结果</h2><div class="task-actions"><button class="button" data-speed-batch type="button" disabled>一键测速</button><button class="button" data-speed-continue type="button" disabled>继续测速</button></div></div>
             <div class="surface-body"><p class="sub" data-official-test-count>尚无详细测试结果</p></div>
-            <div class="scan-table-wrap" tabindex="0" role="region" aria-label="详细测试表格，可横向滚动"><table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">最小延迟</th><th scope="col">最大延迟</th><th scope="col">平均延迟</th><th scope="col">丢包率</th><th scope="col">测速状态</th></tr></thead><tbody data-official-test-rows></tbody></table></div>
-            <footer class="surface-footer">测速、自动流程与输出即将迁移。全部复制、导出和发布操作仍可使用<a href="/">完整旧版</a>；非标结果尚未迁移。</footer>
+            <div class="scan-table-wrap" tabindex="0" role="region" aria-label="详细测试表格，可横向滚动"><table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">最小延迟</th><th scope="col">最大延迟</th><th scope="col">平均延迟</th><th scope="col">丢包率</th><th scope="col">测速值</th><th scope="col">状态与操作</th></tr></thead><tbody data-official-test-rows></tbody></table></div>
+            <footer class="surface-footer">自动流程与输出即将迁移。全部复制、导出和发布操作仍可使用<a href="/">完整旧版</a>；非标结果尚未迁移。</footer>
           </section>
         </div>
       </section>

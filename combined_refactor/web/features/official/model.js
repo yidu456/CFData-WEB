@@ -21,24 +21,35 @@ export function buildTestRequest(values, dc, centers) {
   return { dc, port, delay, scanMode };
 }
 
-export function createOfficialState() { return { rows: [], rowIndex: new Map(), centers: [], selectedDC: '', startedAt: '', candidatesReady: false, testRows: [], testIndex: new Map(), testingDC: '', testedDCs: new Set() }; }
+export function createOfficialState() { return { rows: [], rowIndex: new Map(), centers: [], selectedDC: '', startedAt: '', candidatesReady: false, testRows: [], testIndex: new Map(), testingDC: '', testedDCs: new Set(), speedIP: '', continueUnlocked: false }; }
 
 export function reduceOfficial(state, { type, data }) {
   if (type === 'scan_requested') return { ...createOfficialState(), startedAt: data?.startedAt || '', candidatesReady: true };
-  if (type === 'connection_lost') return { ...state, candidatesReady: false, testingDC: '' };
+  if (type === 'connection_lost') return { ...state, candidatesReady: false, testingDC: '', speedIP: '' };
   if (type === 'background_task_enabled') return { ...state, startedAt: data?.startedAt || state.startedAt };
   if (type === 'background_task_following' && data?.mode === 'official') {
     return data.startedAt && data.startedAt !== state.startedAt ? { ...createOfficialState(), startedAt: data.startedAt, candidatesReady: true } : { ...state, candidatesReady: true };
   }
-  if (type === 'test_requested') return { ...state, testRows: [], testIndex: new Map(), testingDC: data.dc };
-  if (['task_stopped', 'task_complete', 'error'].includes(type)) return state.testingDC ? { ...state, testingDC: '' } : state;
+  if (type === 'test_requested') return { ...state, testRows: [], testIndex: new Map(), testingDC: data.dc, continueUnlocked: false };
+  if (type === 'speed_requested') {
+    if (!data.continued && !data.ip) for (const row of state.testRows) row.Speed = '';
+    return { ...state, speedIP: data.ip || '', continueUnlocked: false };
+  }
+  if (type === 'speed_test_result') {
+    const row = state.testRows.find(row => row.IP === data?.ip && (!data.port || row.Port === Number(data.port)));
+    if (!row || typeof data.speed !== 'string') return state;
+    row.Speed = data.speed;
+    return { ...state, speedIP: '' };
+  }
+  if (type === 'official_speed_complete') return { ...state, speedIP: '', continueUnlocked: true };
+  if (['task_stopped', 'task_complete', 'error'].includes(type)) return { ...state, testingDC: '', speedIP: '', continueUnlocked: state.continueUnlocked || state.testRows.some(row => row.Speed && row.Speed !== '未测速') };
   if (type === 'test_complete') {
     if (!Array.isArray(data)) return state;
     let next = { ...state, testRows: [], testIndex: new Map() };
     for (const row of data) next = reduceOfficial(next, { type: 'test_result', data: row });
     const testedDCs = new Set(state.testedDCs);
     if (state.testingDC) testedDCs.add(state.testingDC);
-    return { ...next, testingDC: '', testedDCs };
+    return { ...next, testingDC: '', testedDCs, continueUnlocked: next.testRows.some(row => row.Speed && row.Speed !== '未测速') };
   }
   if (type === 'test_result') {
     if (!data || typeof data.IP !== 'string' || !data.IP || !Number.isInteger(data.Port) || data.Port < 1 || data.Port > 65535) return state;

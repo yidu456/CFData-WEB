@@ -38,7 +38,7 @@ test('completed DC summaries sort by latency and selection must match current su
   state = reduceOfficial(state,{type:'select_dc',data:'../secret'});
   assert.equal(state.selectedDC,'HKG');
   const previous=state;
-  assert.equal(reduceOfficial(state,{type:'task_stopped'}),previous);
+  assert.deepEqual(reduceOfficial(state,{type:'task_stopped'}),previous);
   state = reduceOfficial(state,{type:'scan_requested'});
   assert.equal(state.centers.length,0); assert.equal(state.rows.length,0); assert.equal(state.selectedDC,'');
 });
@@ -101,4 +101,21 @@ test('reconnect retains displayed rows but invalidates foreground scan candidate
   assert.equal(state.candidatesReady,false);
   state=reduceOfficial(state,{type:'background_task_following',data:{mode:'official',startedAt:'one'}});
   assert.equal(state.candidatesReady,true);
+});
+
+test('single/batch/continue speed updates keep endpoint result metadata and tested progress',async()=>{
+ const {createOfficialState,reduceOfficial}=await load();let state=createOfficialState();
+ state=reduceOfficial(state,{type:'test_result',data:{IP:'192.0.2.1',Port:443,AvgLatency:12000000,Speed:'1MB/s'}});
+ state=reduceOfficial(state,{type:'speed_requested',data:{continued:true,ip:'192.0.2.1'}});
+ assert.equal(state.testRows[0].Speed,'1MB/s');
+ state=reduceOfficial(state,{type:'speed_test_result',data:{ip:'192.0.2.1',port:443,speed:'连接错误'}});
+ assert.equal(state.testRows[0].Speed,'连接错误');assert.equal(state.testRows[0].avgMS,12);
+ state=reduceOfficial(state,{type:'official_speed_complete',data:{}});assert.equal(state.continueUnlocked,true);
+ state=reduceOfficial(state,{type:'speed_requested',data:{continued:false}});assert.equal(state.testRows[0].Speed,'');
+});
+
+test('replayed completed batch enables continuing untested rows',async()=>{
+ const {createOfficialState,reduceOfficial}=await load();let state=createOfficialState();
+ state=reduceOfficial(state,{type:'test_complete',data:[{IP:'192.0.2.1',Port:443,Speed:'1MB/s'},{IP:'192.0.2.2',Port:443,Speed:''}]});
+ assert.equal(state.continueUnlocked,true);
 });

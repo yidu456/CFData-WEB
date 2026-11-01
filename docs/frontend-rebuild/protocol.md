@@ -10,7 +10,7 @@
 |---|---|---|---|
 | `start_task` | G01/G03 | ipType, threads, port, delay, scanMode, autoSpeed, officialTargetDC, officialSpeedPort, officialSpeedURL, officialSpeedMin, officialSpeedLimit | `combined_refactor/server.go:127` |
 | `start_test` | G01 | dc, port, delay, scanMode | `combined_refactor/server.go:178` |
-| `start_speed_test` | G01/G03 | ip, port, url | `combined_refactor/server.go:198` |
+| `start_speed_test` | G01/G03 | ip, port, url；新版可选 resultPort 标识原始结果端口，不传沿用 port | `combined_refactor/server.go:198` |
 | `start_official_speed_batch` | G03 | port, url, speedMin, speedLimit, results, skipTested | `combined_refactor/server.go:211` |
 | `start_nsb_task` | G02 | fileName, fileContent, sourceURL, outFile, maxThreads, fallbackPort, speedTest, speedURL, enableTLS, delay, resultLimit, dc, speedMin, speedLimit, compact, scanMode, relinkHost | `combined_refactor/server.go:233` |
 | `start_nsb_reallink` | G02 | results, relinkHost, outFile, speedTest, speedURL, enableTLS, speedMin, speedLimit, compact, scanMode | `combined_refactor/server.go:299` |

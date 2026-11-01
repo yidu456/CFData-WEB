@@ -29,9 +29,10 @@ type startTestRequest struct {
 }
 
 type startSpeedTestRequest struct {
-	IP   string `json:"ip"`
-	Port int    `json:"port"`
-	URL  string `json:"url"`
+	IP         string `json:"ip"`
+	Port       int    `json:"port"`
+	ResultPort int    `json:"resultPort"`
+	URL        string `json:"url"`
 }
 
 type startOfficialSpeedBatchRequest struct {

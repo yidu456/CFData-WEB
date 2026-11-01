@@ -135,7 +135,7 @@ func formatSpeedHTTPFailure(statusCode int) string {
 	return "测速失败"
 }
 
-func runSpeedTest(ctx context.Context, session *appSession, ip string, port int, customURL string) {
+func runSpeedTest(ctx context.Context, session *appSession, ip string, port, resultPort int, customURL string) {
 	session.sendWSMessage("log", fmt.Sprintf("开始对 IP %s 端口 %d 进行测速...", ip, port))
 
 	speedMB, speedErr := runWindowedSpeedTest(ctx, ip, port, customURL)
@@ -143,7 +143,7 @@ func runSpeedTest(ctx context.Context, session *appSession, ip string, port int,
 		if ctx.Err() != nil {
 			return
 		}
-		session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "speed": speedErr})
+		session.recordOfficialSpeedResult(ip, resultPort, speedErr)
 		session.sendWSMessage("log", "测速失败: "+speedErr)
 		return
 	}
@@ -152,8 +152,19 @@ func runSpeedTest(ctx context.Context, session *appSession, ip string, port int,
 	}
 	speedStr := fmt.Sprintf("%.2fMB/s", speedMB)
 
-	session.sendWSMessage("speed_test_result", map[string]string{"ip": ip, "speed": speedStr})
+	session.recordOfficialSpeedResult(ip, resultPort, speedStr)
 	session.sendWSMessage("log", fmt.Sprintf("IP %s 测速完成: %s", ip, speedStr))
+}
+
+func (s *appSession) recordOfficialSpeedResult(ip string, port int, speed string) {
+	s.testMutex.Lock()
+	for i := range s.testResults {
+		if s.testResults[i].IP == ip && s.testResults[i].Port == port {
+			s.testResults[i].Speed = speed
+		}
+	}
+	s.testMutex.Unlock()
+	s.sendWSMessage("speed_test_result", map[string]interface{}{"ip": ip, "port": port, "speed": speed})
 }
 
 const speedRateLimitMessage = "检测到触发速率限制，请稍后重试或更换网络环境"
@@ -247,6 +258,14 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 		session.sendWSMessage("official_speed_complete", map[string]interface{}{"qualified": 0, "limit": speedLimit, "rateLimited": false})
 		return
 	}
+	if !skipTested {
+		for i := range results {
+			results[i].Speed = ""
+		}
+		session.testMutex.Lock()
+		session.testResults = append([]TestResult(nil), results...)
+		session.testMutex.Unlock()
+	}
 	if skipTested {
 		pending := results[:0]
 		for _, result := range results {
@@ -268,7 +287,7 @@ func runOfficialSpeedBatch(ctx context.Context, session *appSession, port int, c
 	session.sendWSMessage("official_speed_progress", map[string]interface{}{"current": 0, "total": len(results), "qualified": 0, "limit": speedLimit})
 	rateLimited := false
 	updated, qualified := runOfficialSpeedTestsCore(ctx, results, port, speedLimit, speedMin, customURL, func(current, total, qualified int, result TestResult) {
-		session.sendWSMessage("speed_test_result", map[string]string{"ip": result.IP, "speed": result.Speed})
+		session.sendWSMessage("speed_test_result", map[string]interface{}{"ip": result.IP, "port": result.Port, "speed": result.Speed})
 		session.sendWSMessage("official_speed_progress", map[string]interface{}{"current": current, "total": total, "qualified": qualified, "limit": speedLimit})
 	}, func() {
 		rateLimited = true

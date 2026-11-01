@@ -204,8 +204,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if params.Port <= 0 {
 				params.Port = 443
 			}
+			if params.ResultPort <= 0 {
+				params.ResultPort = params.Port
+			}
 			session.startTaskNamed("单 IP 测速", "official", map[string]interface{}{"ip": params.IP, "port": params.Port, "url": params.URL}, func(ctx context.Context, session *appSession) {
-				runSpeedTest(ctx, session, params.IP, params.Port, params.URL)
+				runSpeedTest(ctx, session, params.IP, params.Port, params.ResultPort, params.URL)
 			})
 		},
 		"start_official_speed_batch": func(data json.RawMessage) {

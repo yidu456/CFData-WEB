@@ -62,7 +62,7 @@ export function reduceTask(state, { type, data }) {
       return { ...state, background: false, following: false, ...(state.background ? { running: false, stopping: false, ...(!state.outcome ? { phase: '后台任务已消失', message: '服务器已无可跟随的后台任务；不能推断最终结果' } : {}) } : {}) };
     case 'scan_progress': return progress(state, 'official', '扫描中', p.current, p.total);
     case 'test_progress': return progress(state, 'official', '详细测试中', p.current, p.total);
-    case 'official_speed_progress': return { ...progress(state, 'official', '测速中', p.qualified, p.limit), speedQualified: count(p.qualified) };
+    case 'official_speed_progress': return { ...progress(state, 'official', '测速中', p.qualified, p.limit), speedQualified: count(p.qualified), speedCount: count(p.current), message: `已尝试 ${count(p.current)} / ${count(p.total)} 个候选；达标 ${count(p.qualified)} / ${count(p.limit)}` };
     case 'nsb_progress': return progress(state, 'nsb', text(p.text) || ({ scan: '扫描中', reallink: '链路复验中', speed: '测速中' })[p.phase] || '处理中', p.current, p.total);
     case 'scan_result': return { ...state, resultCount: state.resultCount + 1, scanSuccess: state.scanSuccess + 1 };
     case 'test_result': return { ...state, testCount: state.testCount + 1 };

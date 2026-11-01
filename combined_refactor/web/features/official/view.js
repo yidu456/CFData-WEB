@@ -1,4 +1,5 @@
 import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial, visibleScanRows, visibleTestRows } from './model.js';
+import { buildSpeedConfig, buildSpeedRequest, buildBatchRequest, speedStatus } from '../measurement/model.js';
 
 export function mountOfficial({ root, monitor }) {
   let state = createOfficialState(), frame;
@@ -8,9 +9,14 @@ export function mountOfficial({ root, monitor }) {
   const rows = root.querySelector('[data-official-rows]');
   const centers = root.querySelector('[data-official-centers]');
   const testButton = root.querySelector('[data-official-test]');
+  const speedForm = root.querySelector('[data-speed-form]');
+  const speedConfig = () => buildSpeedConfig({ ...Object.fromEntries(new FormData(speedForm)), port: form.elements.port.value });
   function updateReady() {
     start.disabled = !monitor.isReady();
     testButton.disabled = !monitor.isReady() || !state.selectedDC || !state.candidatesReady;
+    root.querySelector('[data-speed-batch]').disabled = !monitor.isReady() || !state.testRows.length || Number(speedForm.elements.speedLimit.value) <= 0;
+    root.querySelector('[data-speed-continue]').disabled = !monitor.isReady() || !state.continueUnlocked || !state.testRows.some(row => !row.Speed || row.Speed === '未测速') || Number(speedForm.elements.speedLimit.value) <= 0;
+    for (const button of root.querySelectorAll('[data-speed-ip]')) button.disabled = !monitor.isReady();
   }
   function render() {
     updateReady();
@@ -44,6 +50,14 @@ export function mountOfficial({ root, monitor }) {
       for (const value of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', milliseconds(row.minMS), milliseconds(row.maxMS), milliseconds(row.avgMS), row.lossPercent === null ? '未知' : row.lossPercent.toFixed(2) + '%', row.Speed || '未测速']) {
         const cell = root.createElement('td'); cell.textContent = String(value); tr.append(cell);
       }
+      const speed = root.createElement('td');
+      const tag = root.createElement('span');
+      tag.textContent = ({ untested: '未测速', qualified: '达标', unqualified: '未达标', failed: '失败' })[speedStatus(row.Speed, Number(speedForm.elements.speedMin.value) || .1)];
+      speed.append(tag);
+      const button = root.createElement('button'); button.className = 'button'; button.type = 'button'; button.dataset.speedIp = row.IP;
+      button.textContent = row.Speed ? '重新测速' : '测速'; button.disabled = !monitor.isReady();
+      button.addEventListener('click', () => startSpeed(false, row.IP));
+      speed.append(button); tr.append(speed);
       detail.append(tr);
     }
     root.querySelector('[data-official-test-rows]').replaceChildren(detail);
@@ -74,6 +88,26 @@ export function mountOfficial({ root, monitor }) {
       render();
     } catch (error) { status.textContent = error.message; }
   });
+  function startSpeed(continued, ip) {
+    if (!monitor.isReady()) return;
+    try {
+      const config = speedConfig();
+      const data = ip ? buildSpeedRequest(config, state.testRows, ip) : buildBatchRequest(config, state.testRows, continued);
+      const type = ip ? 'start_speed_test' : 'start_official_speed_batch';
+      if (!monitor.startTask(type, data, ip ? `单 IP 测速 ${ip}` : continued ? '官方继续测速' : '官方批量测速')) return;
+      state = reduceOfficial(state, { type: 'speed_requested', data: { ip, continued } });
+      status.textContent = '测速已提交；达标目标与尝试数量不同，停止和限流保留已取得结果';
+      render();
+    } catch (error) { status.textContent = error.message; }
+  }
+  root.querySelector('[data-speed-batch]').addEventListener('click', () => startSpeed(false));
+  root.querySelector('[data-speed-continue]').addEventListener('click', () => startSpeed(true));
+  speedForm.addEventListener('input', render);
+  speedForm.addEventListener('submit', event => event.preventDefault());
+  speedForm.elements.preset.addEventListener('change', () => {
+    if (speedForm.elements.preset.value !== 'custom') speedForm.elements.url.value = speedForm.elements.preset.value;
+  });
+  speedForm.elements.url.addEventListener('input', () => { speedForm.elements.preset.value = 'custom'; });
   render();
   return {
     onState(value) {
@@ -84,6 +118,13 @@ export function mountOfficial({ root, monitor }) {
       } else updateReady();
     },
     onMessage(message) {
+      if (message.type === 'init_config' || message.type === 'speed_url_status') {
+        const payload = message.type === 'init_config' ? message.data?.speedURLStatus : message.data;
+        for (const entry of payload?.urls || []) {
+          const option = [...speedForm.elements.preset.options].find(option => option.value === entry.url);
+          if (option) option.textContent = `${entry.label}${entry.tested && !entry.available ? '（不可用）' : entry.tested ? '（可用）' : '（未检测）'}`;
+        }
+      }
       const next = reduceOfficial(state, message);
       if (next !== state) {
         state = next;

@@ -32,6 +32,7 @@ func TestWorkbenchRoutes(t *testing.T) {
 		{"/assets/features/tasks/state.js", "text/javascript; charset=utf-8", "reduceTask"},
 		{"/assets/features/official/model.js", "text/javascript; charset=utf-8", "buildScanRequest"},
 		{"/assets/features/official/view.js", "text/javascript; charset=utf-8", "mountOfficial"},
+		{"/assets/features/measurement/model.js", "text/javascript; charset=utf-8", "buildSpeedConfig"},
 		{"/assets/platform/theme.js", "text/javascript; charset=utf-8", "cfdata-theme"},
 		{"/assets/styles/tokens.css", "text/css; charset=utf-8", "--cf-brand"},
 		{"/assets/styles/layout.css", "text/css; charset=utf-8", "@media"},
