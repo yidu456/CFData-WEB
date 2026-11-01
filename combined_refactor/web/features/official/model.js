@@ -21,14 +21,14 @@ export function buildTestRequest(values, dc, centers) {
   return { dc, port, delay, scanMode };
 }
 
-export function createOfficialState() { return { rows: [], rowIndex: new Map(), centers: [], selectedDC: '', startedAt: '', candidatesReady: false, testRows: [], testIndex: new Map(), testingDC: '', testedDCs: new Set(), speedIP: '', continueUnlocked: false }; }
+export function createOfficialState() { return { rows: [], rowIndex: new Map(), centers: [], selectedDC: '', startedAt: '', candidatesReady: false, automatic: false, testRows: [], testIndex: new Map(), testingDC: '', testedDCs: new Set(), speedIP: '', continueUnlocked: false }; }
 
 export function reduceOfficial(state, { type, data }) {
-  if (type === 'scan_requested') return { ...createOfficialState(), startedAt: data?.startedAt || '', candidatesReady: true };
+  if (type === 'scan_requested') return { ...createOfficialState(), startedAt: data?.startedAt || '', candidatesReady: true, automatic: !!data?.automatic };
   if (type === 'connection_lost') return { ...state, candidatesReady: false, testingDC: '', speedIP: '' };
-  if (type === 'background_task_enabled') return { ...state, startedAt: data?.startedAt || state.startedAt };
+  if (type === 'background_task_enabled') return { ...state, startedAt: data?.startedAt || state.startedAt, automatic: !!data?.params?.serverAutoFlow || state.automatic };
   if (type === 'background_task_following' && data?.mode === 'official') {
-    return data.startedAt && data.startedAt !== state.startedAt ? { ...createOfficialState(), startedAt: data.startedAt, candidatesReady: true } : { ...state, candidatesReady: true };
+    return data.startedAt && data.startedAt !== state.startedAt ? { ...createOfficialState(), startedAt: data.startedAt, candidatesReady: true, automatic: !!data.params?.serverAutoFlow } : { ...state, candidatesReady: true };
   }
   if (type === 'test_requested') return { ...state, testRows: [], testIndex: new Map(), testingDC: data.dc, continueUnlocked: false };
   if (type === 'speed_requested') {
@@ -48,7 +48,7 @@ export function reduceOfficial(state, { type, data }) {
     let next = { ...state, testRows: [], testIndex: new Map() };
     for (const row of data) next = reduceOfficial(next, { type: 'test_result', data: row });
     const testedDCs = new Set(state.testedDCs);
-    if (state.testingDC) testedDCs.add(state.testingDC);
+    if (state.testingDC || (state.automatic && next.testingDC)) testedDCs.add(state.testingDC || next.testingDC);
     return { ...next, testingDC: '', testedDCs, continueUnlocked: next.testRows.some(row => row.Speed && row.Speed !== '未测速') };
   }
   if (type === 'test_result') {
@@ -66,7 +66,7 @@ export function reduceOfficial(state, { type, data }) {
     const index = state.testIndex.get(key);
     if (index === undefined) { state.testIndex.set(key, state.testRows.length); state.testRows.push(row); }
     else state.testRows[index] = row;
-    return { ...state };
+    return { ...state, ...(state.automatic && row.DataCenter ? { testingDC: row.DataCenter, selectedDC: row.DataCenter } : {}) };
   }
   if (type === 'select_dc') return state.centers.some(center => center.DataCenter === data) ? { ...state, selectedDC: data } : state;
   if (type === 'scan_result') {

@@ -33,3 +33,9 @@ export function buildBatchRequest(config, rows, continued) {
   });
   return { ...config, results, skipTested: continued };
 }
+
+export function buildAutoScanRequest(scan, speed, target) {
+  target = String(target || '').trim().toUpperCase();
+  if (target && !/^[A-Z0-9]{3}$/.test(target)) throw new Error('数据中心代码应为 3 位字母/数字，留空自动选择');
+  return { ...scan, autoSpeed: true, serverAutoFlow: true, officialTargetDC: target, officialSpeedPort: speed.port, officialSpeedURL: speed.url, officialSpeedMin: speed.speedMin, officialSpeedLimit: speed.speedLimit };
+}

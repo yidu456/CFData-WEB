@@ -29,3 +29,9 @@ test('row identity remains distinct from the selected measurement port',async()=
  const {buildSpeedRequest}=await load();
  assert.deepEqual(buildSpeedRequest({port:8443,url:'auto'},[row],'192.0.2.1'),{ip:'192.0.2.1',port:8443,resultPort:443,url:'auto'});
 });
+test('automatic request is server-owned and zero speed limit keeps detailed stage',async()=>{
+ const {buildAutoScanRequest}=await load();const scan={ipType:4,port:443,delay:0,threads:100,scanMode:'tcping',autoSpeed:false};
+ const data=buildAutoScanRequest(scan,{port:443,url:'auto',speedMin:.1,speedLimit:0},' hkg ');
+ assert.equal(data.serverAutoFlow,true);assert.equal(data.autoSpeed,true);assert.equal(data.officialTargetDC,'HKG');assert.equal(data.officialSpeedLimit,0);
+ assert.throws(()=>buildAutoScanRequest(scan,{port:443,url:'auto',speedMin:.1,speedLimit:5},'../x'));
+});

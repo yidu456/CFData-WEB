@@ -6,6 +6,8 @@
 
 统一请求结构为 `{type, data}`。下面列的是传输字段名，不是新 UI 的展示文案。
 
+新版自动官方流程在 `start_task.data` 中可选传入 `serverAutoFlow:true`，与 `autoSpeed:true` 一起明确后端持有后续阶段；旧客户端不传时保持原有前台/后台编排方式。新版 `speed_test_result` 可带原始结果 `port`，`start_speed_test.resultPort` 区分测量端口和结果身份，原有 ip/speed 字段保持兼容。
+
 | 请求类型 | 归属 | data 字段 | 后端位置 |
 |---|---|---|---|
 | `start_task` | G01/G03 | ipType, threads, port, delay, scanMode, autoSpeed, officialTargetDC, officialSpeedPort, officialSpeedURL, officialSpeedMin, officialSpeedLimit | `combined_refactor/server.go:127` |

@@ -1,5 +1,5 @@
 import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial, visibleScanRows, visibleTestRows } from './model.js';
-import { buildSpeedConfig, buildSpeedRequest, buildBatchRequest, speedStatus } from '../measurement/model.js';
+import { buildSpeedConfig, buildSpeedRequest, buildBatchRequest, buildAutoScanRequest, speedStatus } from '../measurement/model.js';
 
 export function mountOfficial({ root, monitor }) {
   let state = createOfficialState(), frame;
@@ -66,10 +66,11 @@ export function mountOfficial({ root, monitor }) {
     event.preventDefault();
     if (!monitor.isReady()) return;
     try {
-      const data = buildScanRequest(Object.fromEntries(new FormData(form)));
+      let data = buildScanRequest(Object.fromEntries(new FormData(form)));
+      if (form.elements.automatic.value === 'on') data = buildAutoScanRequest(data, speedConfig(), form.elements.targetDC.value);
       if (!monitor.startTask('start_task', data, '官方优选扫描')) { status.textContent = '任务未发送，请检查连接或当前运行任务'; return; }
-      state = reduceOfficial(state, { type: 'scan_requested', data: { startedAt: monitor.getState().startedAt } });
-      status.textContent = '已提交官方扫描；停止和后台操作位于全局任务区域';
+      state = reduceOfficial(state, { type: 'scan_requested', data: { startedAt: monitor.getState().startedAt, automatic: data.serverAutoFlow } });
+      status.textContent = data.serverAutoFlow ? '已提交自动流程，后端串行完成扫描/详细测试/测速；转后台后继续，0 达标数量跳过测速' : '已提交官方扫描；停止和后台操作位于全局任务区域';
       render();
     } catch (error) { status.textContent = error.message; }
   });

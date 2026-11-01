@@ -143,24 +143,37 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			if scanMode == "" {
 				scanMode = scanModeTCPing
 			}
-			autoSpeed := params.AutoSpeed && params.OfficialSpeedLimit > 0
-			session.startTaskNamed("官方优选扫描", "official", map[string]interface{}{"ipType": params.IPType, "threads": params.Threads, "port": params.Port, "delay": params.Delay, "scanMode": scanMode, "autoSpeed": autoSpeed}, func(ctx context.Context, session *appSession) {
+			autoSpeed := params.AutoSpeed && (params.ServerAutoFlow || params.OfficialSpeedLimit > 0)
+			session.startTaskNamed("官方优选扫描", "official", map[string]interface{}{"ipType": params.IPType, "threads": params.Threads, "port": params.Port, "delay": params.Delay, "scanMode": scanMode, "autoSpeed": autoSpeed, "serverAutoFlow": params.ServerAutoFlow}, func(ctx context.Context, session *appSession) {
+				if params.ServerAutoFlow {
+					session.scanMutex.Lock()
+					session.scanResults = nil
+					session.scanMutex.Unlock()
+					session.testMutex.Lock()
+					session.testResults = nil
+					session.testMutex.Unlock()
+				}
 				runOfficialTask(ctx, session, params.IPType, params.Threads, params.Port, params.Delay, scanMode)
-				if ctx.Err() != nil || !autoSpeed || !session.isBackgroundTask() {
+				if !officialAutoFollowupAllowed(ctx, session, params) {
 					return
 				}
 				dc := strings.TrimSpace(params.OfficialTargetDC)
-				if dc == "" {
+				if dc == "" || params.ServerAutoFlow {
 					session.scanMutex.Lock()
 					copy := append([]ScanResult(nil), session.scanResults...)
 					session.scanMutex.Unlock()
-					dc = pickBestDataCenter(copy)
+					var err error
+					dc, err = officialAutoDataCenter(copy, dc)
+					if err != nil {
+						session.sendWSMessage("error", err.Error())
+						return
+					}
 				}
 				if dc == "" || ctx.Err() != nil {
 					return
 				}
 				runDetailedTest(ctx, session, dc, params.OfficialSpeedPort, params.Delay, scanMode)
-				if ctx.Err() != nil || !session.isBackgroundTask() || params.OfficialSpeedLimit <= 0 {
+				if ctx.Err() != nil || (!params.ServerAutoFlow && !session.isBackgroundTask()) || params.OfficialSpeedLimit <= 0 {
 					return
 				}
 				speedURL := strings.TrimSpace(params.OfficialSpeedURL)

@@ -14,6 +14,7 @@ type startTaskRequest struct {
 	Delay              int     `json:"delay"`
 	ScanMode           string  `json:"scanMode"`
 	AutoSpeed          bool    `json:"autoSpeed"`
+	ServerAutoFlow     bool    `json:"serverAutoFlow"`
 	OfficialTargetDC   string  `json:"officialTargetDC"`
 	OfficialSpeedPort  int     `json:"officialSpeedPort"`
 	OfficialSpeedURL   string  `json:"officialSpeedURL"`

@@ -119,3 +119,10 @@ test('replayed completed batch enables continuing untested rows',async()=>{
  state=reduceOfficial(state,{type:'test_complete',data:[{IP:'192.0.2.1',Port:443,Speed:'1MB/s'},{IP:'192.0.2.2',Port:443,Speed:''}]});
  assert.equal(state.continueUnlocked,true);
 });
+test('automatic pipeline marks its actual detailed-test data center without frontend stage commands',async()=>{
+ const {createOfficialState,reduceOfficial}=await load();let state=reduceOfficial(createOfficialState(),{type:'scan_requested',data:{automatic:true}});
+ state=reduceOfficial(state,{type:'test_result',data:{IP:'192.0.2.1',Port:443,DataCenter:'HKG',AvgLatency:12000000}});
+ assert.equal(state.testingDC,'HKG');assert.equal(state.selectedDC,'HKG');
+ state=reduceOfficial(state,{type:'test_complete',data:[{IP:'192.0.2.1',Port:443,DataCenter:'HKG',AvgLatency:12000000}]});
+ assert.equal(state.testedDCs.has('HKG'),true);assert.equal(state.testingDC,'');
+});

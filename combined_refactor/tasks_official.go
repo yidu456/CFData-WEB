@@ -450,6 +450,23 @@ func runOfficialTask(ctx context.Context, session *appSession, ipType int, scanM
 	session.sendWSMessage("scan_complete_wait_dc", dcList)
 }
 
+func officialAutoFollowupAllowed(ctx context.Context, session *appSession, params startTaskRequest) bool {
+	return ctx.Err() == nil && params.AutoSpeed && (params.ServerAutoFlow || (params.OfficialSpeedLimit > 0 && session.isBackgroundTask()))
+}
+
+func officialAutoDataCenter(rows []ScanResult, target string) (string, error) {
+	target = strings.ToUpper(strings.TrimSpace(target))
+	if target == "" {
+		return pickBestDataCenter(rows), nil
+	}
+	for _, row := range rows {
+		if strings.EqualFold(row.DataCenter, target) {
+			return row.DataCenter, nil
+		}
+	}
+	return "", fmt.Errorf("指定数据中心 %s 未出现在扫描结果中", target)
+}
+
 func runDetailedTest(ctx context.Context, session *appSession, selectedDC string, port int, delay int, scanMode string) {
 	session.testMutex.Lock()
 	session.testResults = nil
