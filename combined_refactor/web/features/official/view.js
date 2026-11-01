@@ -1,5 +1,6 @@
-import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial, visibleScanRows, visibleTestRows } from './model.js';
+import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial } from './model.js';
 import { buildSpeedConfig, buildSpeedRequest, buildBatchRequest, buildAutoScanRequest, speedStatus } from '../measurement/model.js';
+import { mountResultBrowser } from '../results/controls.js';
 
 export function mountOfficial({ root, monitor }) {
   let state = createOfficialState(), frame;
@@ -11,6 +12,8 @@ export function mountOfficial({ root, monitor }) {
   const testButton = root.querySelector('[data-official-test]');
   const speedForm = root.querySelector('[data-speed-form]');
   const speedConfig = () => buildSpeedConfig({ ...Object.fromEntries(new FormData(speedForm)), port: form.elements.port.value });
+  const scanBrowser=mountResultBrowser({root,name:'scan',type:'scan',onChange:render});
+  const testBrowser=mountResultBrowser({root,name:'detail',type:'detail',onChange:render});
   function updateReady() {
     start.disabled = !monitor.isReady();
     testButton.disabled = !monitor.isReady() || !state.selectedDC || !state.candidatesReady;
@@ -20,9 +23,11 @@ export function mountOfficial({ root, monitor }) {
   }
   function render() {
     updateReady();
-    root.querySelector('[data-official-count]').textContent = `已保存 ${state.rows.length} 条扫描结果；当前显示最近 ${Math.min(state.rows.length, 100)} 条，按延迟排序`;
+    const scanPage=scanBrowser.select(state.rows,state);
+    root.querySelector('[data-official-count]').textContent = `已保存 ${state.rows.length} 条扫描结果；当前筛选 ${scanPage.total} 条，每页100条`;
     const fragment = root.createDocumentFragment();
-    for (const row of visibleScanRows(state)) {
+    for (const index of scanPage.indexes) {
+      const row=state.rows[index];
       const tr = root.createElement('tr');
       for (const value of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', row.LatencyStr || (row.latencyMS === null ? '未知' : row.latencyMS.toFixed(2) + 'ms')]) {
         const cell = root.createElement('td'); cell.textContent = String(value); tr.append(cell);
@@ -42,10 +47,12 @@ export function mountOfficial({ root, monitor }) {
     centers.replaceChildren(dcFragment);
     root.querySelector('[data-official-selection]').textContent = state.testingDC ? `正在测试 ${state.testingDC}` : state.selectedDC ? `已选择 ${state.selectedDC}${state.testedDCs.has(state.selectedDC) ? ' · 已测试，可重新测试' : ''}` : '扫描完成后选择数据中心';
     testButton.textContent = state.selectedDC && state.testedDCs.has(state.selectedDC) ? '重新详细测试' : '开始详细测试';
-    root.querySelector('[data-official-test-count]').textContent = `已保存 ${state.testRows.length} 条详细结果；显示最近 ${Math.min(state.testRows.length, 100)} 条，按平均延迟排序`;
+    const detailPage=testBrowser.select(state.testRows,state,undefined,Number(speedForm.elements.speedMin.value)||.1);
+    root.querySelector('[data-official-test-count]').textContent = `已保存 ${state.testRows.length} 条详细结果；当前筛选 ${detailPage.total} 条，每页100条`;
     const detail = root.createDocumentFragment();
     const milliseconds = value => value === null ? '未知' : value.toFixed(2) + 'ms';
-    for (const row of visibleTestRows(state)) {
+    for (const index of detailPage.indexes) {
+      const row=state.testRows[index];
       const tr = root.createElement('tr');
       for (const value of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', milliseconds(row.minMS), milliseconds(row.maxMS), milliseconds(row.avgMS), row.lossPercent === null ? '未知' : row.lossPercent.toFixed(2) + '%', row.Speed || '未测速']) {
         const cell = root.createElement('td'); cell.textContent = String(value); tr.append(cell);

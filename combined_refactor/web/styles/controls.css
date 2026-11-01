@@ -9,6 +9,10 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .dc-choice[aria-pressed='true'] { border-color: var(--cf-brand); color: var(--cf-brand); background: var(--cf-tint); }
 .detail-test-button { margin-top: 14px; }
 .measurement-title { margin-top: 24px; }
+.result-browser { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--cf-rule); }
+.result-browser label { display: grid; gap: 4px; font-size: 12px; color: var(--cf-muted); }
+.result-browser input,.result-browser select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-surface); color: var(--cf-ink); padding: 8px; }
+.result-pager { grid-column: 1/-1; display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px; }
 .button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 14px; border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-surface); color: var(--cf-ink); text-decoration: none; text-align: center; }
 .button-primary { background: var(--cf-brand); color: var(--cf-onbrand); border-color: var(--cf-brand); }
 .button:hover { border-color: var(--cf-brand); }

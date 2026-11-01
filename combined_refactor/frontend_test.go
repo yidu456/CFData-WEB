@@ -35,6 +35,8 @@ func TestWorkbenchRoutes(t *testing.T) {
 		{"/assets/features/measurement/model.js", "text/javascript; charset=utf-8", "buildSpeedConfig"},
 		{"/assets/features/nonstandard/model.js", "text/javascript; charset=utf-8", "buildNSBRequest"},
 		{"/assets/features/nonstandard/view.js", "text/javascript; charset=utf-8", "mountNSB"},
+		{"/assets/features/results/browser.js", "text/javascript; charset=utf-8", "browseResultRows"},
+		{"/assets/features/results/controls.js", "text/javascript; charset=utf-8", "mountResultBrowser"},
 		{"/assets/platform/theme.js", "text/javascript; charset=utf-8", "cfdata-theme"},
 		{"/assets/styles/tokens.css", "text/css; charset=utf-8", "--cf-brand"},
 		{"/assets/styles/layout.css", "text/css; charset=utf-8", "@media"},

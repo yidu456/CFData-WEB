@@ -1,5 +1,6 @@
 import { buildNSBRequest, buildNSBExecution, hasNSBPendingRows, buildNSBFollowup, createNSBState, reduceNSB, liveFields } from './model.js';
 import { safeTaskText } from '../tasks/state.js';
+import { mountResultBrowser } from '../results/controls.js';
 
 export function mountNSB({ root, monitor }) {
   let state = createNSBState(), input = {}, readVersion = 0, reading = false, frame;
@@ -8,6 +9,7 @@ export function mountNSB({ root, monitor }) {
   const start = root.querySelector('[data-nsb-start]');
   const dialog = root.querySelector('[data-nsb-confirm]');
   let confirmRows;
+  const browser=mountResultBrowser({root,name:'nsb',type:'nsb',onChange:render});
   function ready() {
     start.disabled = !monitor.isReady() || reading;
     const available = state.headers.length ? state.csvRows.length : state.rows.length;
@@ -19,7 +21,9 @@ export function mountNSB({ root, monitor }) {
     ready();
     const headers = state.headers.length ? state.headers : liveFields;
     const count = state.headers.length ? state.csvRows.length : state.rows.length;
-    const rows = state.headers.length ? state.csvRows.slice(-100) : state.rows.slice(-100).map(row => liveFields.map(key => row[key]));
+    const sourceRows=state.headers.length?state.csvRows:state.rows;
+    const page=browser.select(sourceRows,state,state.headers,Number(form.elements.speedMin.value)||.1);
+    const rows = page.indexes.map(index=>state.headers.length?state.csvRows[index]:liveFields.map(key=>state.rows[index][key]));
     const head = root.createDocumentFragment();
     for (const value of headers) { const th = root.createElement('th'); th.scope = 'col'; th.textContent = value; head.append(th); }
     root.querySelector('[data-nsb-headers]').replaceChildren(head);
@@ -30,7 +34,7 @@ export function mountNSB({ root, monitor }) {
       body.append(tr);
     }
     root.querySelector('[data-nsb-rows]').replaceChildren(body);
-    root.querySelector('[data-nsb-count]').textContent = `已保存 ${count} 条，显示最近 ${Math.min(100, count)} 条${state.file ? '；后端输出 ' + safeTaskText(state.file) : ''}${state.status ? '；' + ({partial:'部分完成',failed:'失败',complete:'完成'})[state.status] : ''}`;
+    root.querySelector('[data-nsb-count]').textContent = `已保存 ${count} 条，筛选 ${page.total} 条，每页100条${state.file ? '；后端输出 ' + safeTaskText(state.file) : ''}${state.status ? '；' + ({partial:'部分完成',failed:'失败',complete:'完成'})[state.status] : ''}`;
   }
   function sourceChanged() {
     readVersion++; reading = false; input = {};
@@ -76,6 +80,7 @@ export function mountNSB({ root, monitor }) {
   form.elements.nsbSpeedPreset.addEventListener('change', () => { if (form.elements.nsbSpeedPreset.value !== 'custom') form.elements.speedURL.value = form.elements.nsbSpeedPreset.value; });
   form.elements.speedURL.addEventListener('input', () => { form.elements.nsbSpeedPreset.value = 'custom'; });
   form.addEventListener('input', ready);
+  form.elements.speedMin.addEventListener('input', render);
   function followup(action, continued) {
     if (!monitor.isReady()) return;
     try {
