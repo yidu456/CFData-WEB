@@ -230,6 +230,19 @@ func confirmCLIHuaweiPreview(_ huaweiPreview) bool {
 	return outcome == promptOK && strings.EqualFold(line, "y")
 }
 
+func writeOfficialCLIResults(ctx context.Context, cfg *cliConfig, scans []ScanResult, results []TestResult, store *huaweiDNSStore) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scans, results, cfg.scanMode), cfg.speedMin), "official"); err != nil {
+		return err
+	}
+	if store != nil {
+		return updateCLIHuaweiDNS(ctx, store, cfg, results, confirmCLIHuaweiPreview)
+	}
+	return nil
+}
+
 func updateCLIHuaweiDNS(ctx context.Context, store *huaweiDNSStore, cfg *cliConfig, results []TestResult, confirm func(huaweiPreview) bool) error {
 	if !cfg.huawei.Enabled {
 		return nil

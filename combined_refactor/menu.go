@@ -222,6 +222,7 @@ func runCLIMenu(cfg *cliConfig) {
 		fmt.Printf("  4. 定时任务（%s）\n", status)
 		fmt.Println("  5. 帮助")
 		fmt.Println("  6. 退出")
+		fmt.Println("  7. 华为 DNS 凭证（独立加密保存/仅内存应用）")
 		fmt.Print("请选择> ")
 		line, outcome := readMenuLine()
 		if outcome != promptOK {
@@ -294,8 +295,29 @@ func runCLIMenu(cfg *cliConfig) {
 			printCLIUsage()
 		case "6":
 			return
+		case "7":
+			store := cfg.huaweiStore
+			if store == nil {
+				path, err := defaultDataPath("huawei-dns.private")
+				if err != nil {
+					fmt.Printf("[Huawei DNS] %v\n", err)
+					continue
+				}
+				store = &huaweiDNSStore{path: path}
+				if err := store.load(); err != nil {
+					fmt.Printf("[Huawei DNS] 原加密文件读取失败，保留不覆盖: %v\n", err)
+					continue
+				}
+			}
+			outcome := configureCLIHuaweiCredentials(store)
+			if outcome == promptQuit {
+				return
+			}
+			if outcome == promptOK {
+				cfg.huaweiStore = store
+			}
 		default:
-			fmt.Println("请输入 1-6 之间的数字")
+			fmt.Println("请输入 1-7 之间的数字")
 		}
 	}
 }
@@ -770,6 +792,18 @@ func runSettingsWizard(fileCfg *cliFileConfig) int {
 		if v != "" {
 			fileCfg.Separator = v
 		}
+	}
+
+	if !isNSB {
+		if !fileCfg.Huawei.Enabled && fileCfg.IPType == 6 {
+			fileCfg.Huawei.Type = "AAAA"
+		}
+		if outcome := runCLIHuaweiWizard(&fileCfg.Huawei); outcome != promptOK {
+			return outcome
+		}
+	} else if fileCfg.Huawei.Enabled {
+		fmt.Println("[Huawei DNS] 当前非标模式不支持此 DNS 流程，已关闭华为 DNS 更新")
+		fileCfg.Huawei.Enabled = false
 	}
 
 	sectionHeader("GitHub 上传")

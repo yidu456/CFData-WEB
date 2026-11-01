@@ -59,6 +59,7 @@ type cliConfig struct {
 	endRow          int
 	export          cliExportConfig
 	huawei          cliHuaweiConfig
+	huaweiStore     *huaweiDNSStore
 }
 
 type cliExportConfig struct {
@@ -826,6 +827,7 @@ func buildCLIConfigHelp() []cliConfigHelp {
 		{Name: "ethost", Description: "edgetunnel 主机地址，例如 https://example.com", Default: ""},
 		{Name: "etpassword", Description: "edgetunnel 密码", Default: ""},
 		{Name: "etmode", Description: "edgetunnel 上传模式", Default: "overwrite", Options: []string{"overwrite", "append"}},
+		{Name: "huaweiDNS", Description: "官方 CLI 华为 DNS 设置对象：enabled/zone/name/type/line/mode/startRow/endRow；仅合格 IP 全局排序后取范围，默认 1..10；与导出范围独立；AK/SK 单独加密保存，hwconfirm 仅命令行本次有效，不保存", Default: "disabled, A, default_view, overwrite, 1..10"},
 	}
 }
 
@@ -1174,10 +1176,13 @@ func runOfficialCLI(cfg *cliConfig) error {
 	}
 	var dnsStore *huaweiDNSStore
 	if cfg.huawei.Enabled {
-		var err error
-		dnsStore, err = loadCLIHuaweiStore()
-		if err != nil {
-			return err
+		dnsStore = cfg.huaweiStore
+		if dnsStore == nil {
+			var err error
+			dnsStore, err = loadCLIHuaweiStore()
+			if err != nil {
+				return err
+			}
 		}
 		if cfg.huawei.EndRow > cfg.speedLimit {
 			fmt.Printf("[Huawei DNS] 测速达标上限 %d 小于结束排名 %d；只会使用实际测得的合格 IP，不保证填满\n", cfg.speedLimit, cfg.huawei.EndRow)
@@ -1189,13 +1194,7 @@ func runOfficialCLI(cfg *cliConfig) error {
 	if err != nil {
 		return err
 	}
-	if err := writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scanResults, results, cfg.scanMode), cfg.speedMin), "official"); err != nil {
-		return err
-	}
-	if dnsStore != nil {
-		return updateCLIHuaweiDNS(context.Background(), dnsStore, cfg, results, confirmCLIHuaweiPreview)
-	}
-	return nil
+	return writeOfficialCLIResults(context.Background(), cfg, scanResults, results, dnsStore)
 }
 
 func runNSBCLI(cfg *cliConfig) error {
@@ -1414,6 +1413,16 @@ func printCLIConfig(cfg *cliConfig) {
 		line("自动测速", boolLabel(cfg.speedLimit > 0))
 		line("测速结果数量", strconv.Itoa(cfg.speedLimit))
 		line("测试合格速度", fmt.Sprintf("%.2fMB/s", cfg.speedMin))
+		if cfg.huawei.Enabled {
+			line("DNS 目标", fmt.Sprintf("%s %s / %s", cfg.huawei.Name, cfg.huawei.Type, cfg.huawei.Line))
+			line("DNS 排名范围", fmt.Sprintf("%d..%d（结束为 0 表示末尾），合格 IP 全局速度降序/同速延迟升序", cfg.huawei.StartRow, cfg.huawei.EndRow))
+			line("DNS 更新模式", cfg.huawei.Mode)
+			if cfg.huawei.Confirmed {
+				line("DNS 确认", "本次命令行已明确授权，仍显示更新预览")
+			} else {
+				line("DNS 确认", "预览后询问；不确认则不更新")
+			}
+		}
 	}
 	fmt.Println(colorize("----------------------------------------", ansiCyan))
 }

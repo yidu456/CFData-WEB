@@ -85,25 +85,27 @@ if err != nil || got[0].IP != "192.0.2.2" || got[1].IP != "192.0.2.3" {
 - `runCLIHuaweiWizard(*cliHuaweiConfig) int` edits only non-secret nested DNS settings.
 - `configureCLIHuaweiCredentials(*huaweiDNSStore) int` applies or explicitly encrypts AK/SK/region/project; never puts them in the CLI template or prints saved secret values.
 - `confirmCLIHuaweiPreview(huaweiPreview) bool` accepts only explicit yes; EOF/back/no refuses.
+- `writeOfficialCLIResults(context.Context, *cliConfig, []ScanResult, []TestResult, *huaweiDNSStore) error` keeps export/upload failure handling before independent canonical DNS selection.
+- `cliConfig.huaweiStore` retains explicitly applied menu-only credentials for later starts in the same CLI process; direct invocations still load the private store/environment.
 - Main menu retains items 1..6 and adds a dedicated item 7 for Huawei credentials.
 
-- [ ] Write input-driven failing tests for wizard cancel/valid ranges, credential encryption/reload without plaintext CLI secrets, confirmation yes/no/EOF, explicit false overrides across menu runs, old config defaults/round-trip, and `rewriteBoolFlagArgs` for new boolean flags.
+- [x] Write input-driven failing tests for wizard cancel/valid ranges, credential encryption/reload without plaintext CLI secrets, confirmation yes/no/EOF, explicit false overrides across menu runs, old config defaults/round-trip, and `rewriteBoolFlagArgs` for new boolean flags.
 
 ```go
 menuInputReader = bufio.NewReader(strings.NewReader("n\n"))
 if confirmCLIHuaweiPreview(preview) { t.Fatal("declined update authorized") }
 ```
 
-- [ ] Run focused menu/config tests and observe RED.
-- [ ] Add non-secret DNS settings to the existing wizard; add dedicated credential menu and redacted config summary/help. Saved templates omit Confirmed and all AK/SK. Preserve existing provider and scheduling menus.
-- [ ] Document explicit ten-rank workflow, larger measured pool, A/AAAA choice, line/zone/name, overwrite/append, interactive vs invocation confirmation, private-file portability limits, DNS answer ordering, and flags before positional `qs`.
-- [ ] Run full Go/vet, all eight frontend VM and four Chrome suites, Windows/Linux builds. Inspect the diff, runtime/protected-file exclusions and secrets before committing.
-- [ ] Mark all tasks complete and commit as `feat: add CLI Huawei setup and document ranked DNS workflow`.
+- [x] Run focused menu/config tests and observe RED.
+- [x] Add non-secret DNS settings to the existing wizard; add dedicated credential menu and redacted config summary/help. Saved templates omit Confirmed and all AK/SK. Preserve existing provider and scheduling menus.
+- [x] Document explicit ten-rank workflow, larger measured pool, A/AAAA choice, line/zone/name, overwrite/append, interactive vs invocation confirmation, private-file portability limits, DNS answer ordering, and flags before positional `qs`.
+- [x] Run full Go/vet, all eight frontend VM and four Chrome suites, Windows/Linux builds. Inspect the diff, runtime/protected-file exclusions and secrets before committing.
+- [x] Mark all tasks complete and commit as `feat: add CLI Huawei setup and document ranked DNS workflow`.
 
 ## Acceptance
 
-- [ ] One initial scan, no unselected detail centers, one combined global speed pass.
-- [ ] Global qualified speed ranking and inclusive 1..10 selection work with arbitrary center mixes; fewer results remain valid and empty results never clear DNS.
-- [ ] Existing DNS target/line/TTL remain intact; updates require current preview and explicit authority.
-- [ ] Old CLI config, nonstandard CLI, Web regressions, exports and provider pages remain intact.
-- [ ] Each task has its own passing tests/build and commit; no live scans/cloud writes or new push.
+- [x] One initial scan, no unselected detail centers, one combined global speed pass.
+- [x] Global qualified speed ranking and inclusive 1..10 selection work with arbitrary center mixes; fewer results remain valid and empty results never clear DNS.
+- [x] Existing DNS target/line/TTL remain intact; updates require current preview and explicit authority.
+- [x] Old CLI config, nonstandard CLI, Web regressions, exports and provider pages remain intact.
+- [x] Each task has its own passing tests/build and commit; no live scans/cloud writes or new push.

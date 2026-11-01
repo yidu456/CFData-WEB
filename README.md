@@ -63,7 +63,7 @@ CLI 模式（进入交互菜单）：
 ./cfdata-linux-amd64 -cli
 ```
 
-菜单提供：按配置启动（菜单 1，等价 `-cli qs`）、自定义参数启动（向导）、修改配置参数、定时任务、帮助。
+菜单提供：按配置启动（菜单 1，等价 `-cli qs`）、自定义参数启动（向导）、修改配置参数、定时任务、帮助，以及华为 DNS 凭证设置（菜单 7，独立加密保存或仅内存应用）。
 
 首次使用 CLI 配置文件时会生成模板并退出，编辑配置后重新运行即可；也可通过菜单「修改配置参数」逐项设置。升级后启动时若配置键名有变化会提示迁移：同名值保留，原文件备份为 `.bak`，非交互环境自动跳过。
 
@@ -82,6 +82,51 @@ CLI 模式（进入交互菜单）：
 # 非标模式直接执行：读取本地文件，开启 TLS 和 5 个测速线程
 ./cfdata-linux-amd64 -cli -mode nsb -nsbfile ip.txt -nsbtls=true -nsbspeedtest 5 -nsburl auto
 ```
+
+### CLI 多数据中心测速 → 华为 DNS
+
+流程为：**扫描一次 → 所选中心逐个详细测试 → 合并候选测速 → 合格 IP 全局排序 → 取排名范围 → DNS 预览 → 确认更新**。
+
+- `-offdc HKG,NRT,SIN` 选择多个中心，大小写不敏感并去重；不填仍自动选择最低延迟中心。未发现的中心会提示并跳过；全部未发现则停止，不更新 DNS。全部中心完成详细测试后，进行一次合并测速，不按中心分配数量。
+- DNS 仅使用实际测速达标、延迟达标、目标端口与 A/AAAA 地址族匹配的 IP；以精确测量速度降序、同速延迟升序排序，去重后取 `-hwstartrow` 至 `-hwendrow`（含）。默认 `1..10`，`hwendrow=0` 表示至末尾。这个范围独立于导出/GitHub/edgetunnel 的 `outstartrow`、`outendrow` 与合格筛选。
+- `-offspeedlimit` 是合并测速的**达标数量上限**，默认仍为 5。若要选全局前 10 个，请明确将测速上限调大，例如 50；达到该数量就停止测速，并非扫描池的所有 IP 都会测速。排序仅针对实际测得的合格池；不足 10 个就使用实际数量，没有合格结果则保留原 DNS。
+- 在 `-cli` 主菜单 7 配置 AK/SK、固定支持的华为区域及该区域的 Project ID。选择「保存加密配置」写入可执行文件旁的 `huawei-dns.private`，可复用 Web 已保存的凭证；「仅内存应用」只对当前菜单进程有效。AK/SK 不写入普通 CLI JSON，也不显示已保存值；终端输入可能回显。新密文使用现有固定程序密钥与随机 nonce 的应用加密，只避免直接明文读取，不能抵御程序逆向；旧 DPAPI 转换限制与 Web 相同。
+- 也可用 `CFDATA_HUAWEI_AK`、`CFDATA_HUAWEI_SK`、`CFDATA_HUAWEI_REGION`、`CFDATA_HUAWEI_PROJECT_ID` 在本次进程内配置。替换 AK/SK 须同时提供两项；区域/项目可沿用有效私有文件。环境值不自动保存，不要将真实密钥写入 shell 历史、脚本仓库或截图。损坏的私有文件会明确报错并保留，不因环境输入而静默覆盖。
+- `hwzone` 是已存在的**公网域名**（不是 Zone ID），`hwname` 是记录完整域名，`hwtype` 与 `offiptype` 对应，`hwline` 必须与云端线路准确一致。只匹配一个现有记录；不存在或匹配歧义时拒绝更新，不创建记录，不修改 TTL/线路/权重。
+- `hwmode=overwrite` 覆盖 IP；`append` 先保留已有云端 IP，再追加所选 IP 并去重。更新前显示旧/新 IP，默认输入 `y` 才更新；其他输入或 EOF 不更新。无人值守运行须显式传入 `-hwconfirm=true`，该授权只对本次调用有效，**不保存在 JSON**。预览后云端记录或账户配置变化、取消、导出/上传失败时不继续 DNS 更新。
+- 该入口目前支持官方 CLI（含单中心），非标 CLI、单独文件上传和地址库精简不能同时启用华为 DNS；这些原有功能本身保持不变。没有修改已安装的定时任务或服务。提交顺序遵循排名，但 DNS 查询返回顺序由解析器决定；IP 集合未变时不为重排而写入。
+
+以下示例假定已在菜单 7 或 Web 保存华为加密凭证，并准备好 CLI 配置文件：
+
+```bash
+# 扫描 IPv4，测速 HKG/NRT/SIN 的合并池，预览全局合格结果前 10 个，询问后覆盖 A 记录
+./cfdata-linux-amd64 -cli -mode official -offiptype 4 -offdc HKG,NRT,SIN \
+  -offspeedlimit 50 -offspeedmin 2.5 -offdelay 500 \
+  -huawei=true -hwzone example.com -hwname edge.example.com \
+  -hwtype A -hwline default_view -hwmode overwrite -hwstartrow 1 -hwendrow 10
+
+# IPv6：将上例的 -offiptype 改为 6、-hwtype 改为 AAAA；追加使用 -hwmode append
+
+# 按保存的配置无人值守运行：所有参数必须写在位置参数 qs 之前
+./cfdata-linux-amd64 -cli -config cfdata-config.json -hwconfirm=true qs
+```
+
+普通配置模板的 `config.huaweiDNS` 只包含非敏感设置，例如：
+
+```json
+"huaweiDNS": {
+  "enabled": true,
+  "zone": "example.com",
+  "name": "edge.example.com",
+  "type": "A",
+  "line": "default_view",
+  "mode": "overwrite",
+  "startRow": 1,
+  "endRow": 10
+}
+```
+
+仅开启上述 DNS 设置不会自动提高 `offspeedlimit`；同时调整它以获得足够大的合格测速池。命令行参数覆盖保存配置，包括显式 `-huawei=false`。
 
 ## Web 使用
 
@@ -124,7 +169,7 @@ CLI 模式（进入交互菜单）：
 
 安全与边界：仅在 `127.0.0.1`/`localhost` 本地访问；如要远程访问，必须同时启用 `-user` 和 `-password`，并保护传输链路，新的配置/发布操作还要求同源。不要将密钥、GitHub Token 或私有配置放入 Git、日志或浏览器配置/结果导出。空结果、失败、取消或失效的批次不会覆盖 DNS；重测、断线、目标/云端状态变化后须重新获取有效完成批次和预览。请求已发出后若超时/断线，云端可能已经应用变更，先只读核对记录或仓库再重试，不能把本地失败视为云端回滚。
 
-这是 Web 优先的开发预览，独立测试构建不覆盖现有生产 EXE；本次未增加对应 CLI 功能或 Windows 定时任务。详细范围见 [Web 多中心与 DNS 说明](docs/superpowers/specs/2026-10-30-web-multi-dc-dns.md)。
+独立测试构建不覆盖现有生产 EXE；对应的官方 CLI 多中心测速与 DNS 功能见「CLI 多数据中心测速 → 华为 DNS」，未修改已安装的 Windows 定时任务。Web 详细范围见 [Web 多中心与 DNS 说明](docs/superpowers/specs/2026-10-30-web-multi-dc-dns.md)。
 
 ### 开发验证（不连接真实云）
 
@@ -251,7 +296,7 @@ Web 的主题、自动加载偏好、表单配置、GitHub 账户和 edgetunnel 
 
 旧版浏览器 `localStorage` 不再作为正常读取或写入后备。设置菜单中的明确迁移只在 `web-state.private` 尚不存在时读取五个旧键，过滤自动发布和任务状态后保存；成功导入仍保留旧键。仅在同次页面会话持有导入确认、加密目标和旧键均未变化时，第二个明确清理操作才删除这五个键，其他浏览器数据不受影响。旧 token/密码的内层 WebCrypto 密文仍绑定原访问地址；域名或端口变化时需要重新输入。
 
-内置输出名 `cfdata-results`（CLI）和 `ip.csv`（Web 非标）按默认文件处理，即使显式重复该名称也写到可执行文件旁；其他显式输出名保留旧版 `safeFilename` 的规则（去掉目录部分后写到启动工作目录）。显式输入文件、`-config` 和 token 文件路径仍按原有规则解析，不改变工作目录，也不新增 CLI/定时任务功能。
+内置输出名 `cfdata-results`（CLI）和 `ip.csv`（Web 非标）按默认文件处理，即使显式重复该名称也写到可执行文件旁；其他显式输出名保留旧版 `safeFilename` 的规则（去掉目录部分后写到启动工作目录）。显式输入文件、`-config` 和 token 文件路径仍按原有规则解析，不改变工作目录；路径规则本身不修改定时任务。
 
 ## 免责声明
 

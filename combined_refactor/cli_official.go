@@ -85,10 +85,11 @@ func runOfficialCLIMeasurements(cfg *cliConfig, session *appSession, deps cliOff
 	session.testResults = nil
 	session.testMutex.Unlock()
 	if err := session.runTaskSync(func(ctx context.Context, s *appSession) {
-		for _, dc := range available {
+		for i, dc := range available {
 			if ctx.Err() != nil {
 				break
 			}
+			fmt.Printf("[official] 详细测试 %d/%d：%s\n", i+1, len(available), dc)
 			deps.Detail(ctx, s, dc, cfg.port, cfg.delay, scanMode, true)
 		}
 		taskErr = ctx.Err()
