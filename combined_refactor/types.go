@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	//go:embed index.html login.html favicon.png
+	//go:embed index.html login.html favicon.png web/index.html web/*.js web/styles/*.css web/platform/*.js
 	staticFiles     embed.FS
 	customDNSServer string
 	customDNSForced bool

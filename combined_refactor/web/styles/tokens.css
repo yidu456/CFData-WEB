@@ -1,0 +1,33 @@
+:root {
+  color-scheme: light;
+  --cf-surface: #ffffff;
+  --cf-ground: #f0f4f8;
+  --cf-sidebar: #e8eff6;
+  --cf-ink: #1b3049;
+  --cf-muted: #5b6d82;
+  --cf-rule: #d9e2ec;
+  --cf-brand: #1e5ec8;
+  --cf-onbrand: #ffffff;
+  --cf-tint: #eaf1fe;
+  --cf-good: #247450;
+  --cf-radius: 10px;
+  font-family: 'Manrope', 'Bahnschrift', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--cf-ink);
+  background: var(--cf-ground);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --cf-surface: #172638;
+  --cf-ground: #101d2b;
+  --cf-sidebar: #142235;
+  --cf-ink: #e5edf7;
+  --cf-muted: #acbacb;
+  --cf-rule: #344458;
+  --cf-brand: #8fb5ff;
+  --cf-onbrand: #142442;
+  --cf-tint: #233952;
+  --cf-good: #92d1b1;
+}

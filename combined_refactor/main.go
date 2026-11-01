@@ -258,6 +258,7 @@ func main() {
 		_, _ = w.Write(data)
 	}))
 	http.HandleFunc("/ws", requireAuth(handleWebSocket))
+	registerWorkbenchRoutes(http.DefaultServeMux)
 
 	addr := fmt.Sprintf(":%d", listenPort)
 	displayHost := "localhost"
