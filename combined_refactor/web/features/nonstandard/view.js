@@ -1,6 +1,7 @@
-import { buildNSBRequest, buildNSBExecution, hasNSBPendingRows, buildNSBFollowup, createNSBState, reduceNSB, liveFields } from './model.js';
+import { buildNSBRequest, buildNSBExecution, hasNSBPendingRows, buildNSBFollowup, createNSBState, reduceNSB, liveFields, getNSBResultRows } from './model.js';
 import { safeTaskText } from '../tasks/state.js';
 import { mountResultBrowser } from '../results/controls.js';
+import { appendAddressActions } from '../results/output-view.js';
 
 export function mountNSB({ root, monitor }) {
   let state = createNSBState(), input = {}, readVersion = 0, reading = false, frame;
@@ -28,9 +29,15 @@ export function mountNSB({ root, monitor }) {
     for (const value of headers) { const th = root.createElement('th'); th.scope = 'col'; th.textContent = value; head.append(th); }
     root.querySelector('[data-nsb-headers]').replaceChildren(head);
     const body = root.createDocumentFragment();
+    const fields = state.headers.length ? state.csvFields : liveFields;
     for (const row of rows) {
       const tr = root.createElement('tr');
-      for (const value of row) { const td = root.createElement('td'); td.textContent = safeTaskText(String(value ?? '')); tr.append(td); }
+      for (const [index,value] of row.entries()) {
+        const td = root.createElement('td');
+        if (fields[index] === 'ip' || fields[index] === 'port') appendAddressActions(td,String(value ?? ''),row[fields.indexOf('originalInput')],fields[index] === 'ip');
+        else td.textContent = safeTaskText(String(value ?? ''));
+        tr.append(td);
+      }
       body.append(tr);
     }
     root.querySelector('[data-nsb-rows]').replaceChildren(body);
@@ -98,7 +105,8 @@ export function mountNSB({ root, monitor }) {
   root.querySelector('[data-nsb-confirm-cancel]').addEventListener('click', () => dialog.close());
   root.querySelector('[data-nsb-confirm-ok]').addEventListener('click', () => { dialog.close(); if (confirmRows === (state.headers.length ? state.csvRows : state.rows)) followup('relink', false); });
   sourceChanged(); render();
-  return { onState(value) { if (value !== 'connected') { confirmRows = undefined; if (dialog.open) dialog.close(); } ready(); }, onMessage(message) {
+  return { getOutputRows: () => getNSBResultRows(state), getSpeedMin: () => Number(form.elements.speedMin.value) || .1,
+    onState(value) { if (value !== 'connected') { confirmRows = undefined; if (dialog.open) dialog.close(); } ready(); }, onMessage(message) {
     if (message.type === 'init_config' || message.type === 'speed_url_status') {
       const payload = message.type === 'init_config' ? message.data?.speedURLStatus : message.data;
       for (const entry of payload?.urls || []) {

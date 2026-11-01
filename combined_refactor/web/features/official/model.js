@@ -23,6 +23,11 @@ export function buildTestRequest(values, dc, centers) {
 
 export function createOfficialState() { return { rows: [], rowIndex: new Map(), centers: [], selectedDC: '', startedAt: '', candidatesReady: false, automatic: false, testRows: [], testIndex: new Map(), testingDC: '', testedDCs: new Set(), speedIP: '', continueUnlocked: false }; }
 
+export function getOfficialOutputRows(state, type) {
+  if (type === 'detail') return state.testRows;
+  return state.rows.map(row => ({...row,Speed:state.testRows[state.testIndex.get(`${row.IP}:${row.Port}`)]?.Speed || ''}));
+}
+
 export function reduceOfficial(state, { type, data }) {
   if (type === 'scan_requested') return { ...createOfficialState(), startedAt: data?.startedAt || '', candidatesReady: true, automatic: !!data?.automatic };
   if (type === 'connection_lost') return { ...state, candidatesReady: false, testingDC: '', speedIP: '' };
@@ -54,7 +59,7 @@ export function reduceOfficial(state, { type, data }) {
   if (type === 'test_result') {
     if (!data || typeof data.IP !== 'string' || !data.IP || !Number.isInteger(data.Port) || data.Port < 1 || data.Port > 65535) return state;
     const row = {};
-    for (const key of ['IP', 'DataCenter', 'DCCountry', 'Region', 'City', 'Speed']) row[key] = typeof data[key] === 'string' ? data[key] : '';
+    for (const key of ['IP', 'DataCenter', 'DCCountry', 'Region', 'City', 'Speed', 'OriginalInput', 'originalInput']) row[key] = typeof data[key] === 'string' ? data[key] : '';
     row.Port = data.Port;
     for (const [raw, converted] of [['MinLatency', 'minMS'], ['MaxLatency', 'maxMS'], ['AvgLatency', 'avgMS']]) {
       row[raw] = Number.isFinite(data[raw]) && data[raw] >= 0 ? data[raw] : null;
@@ -72,7 +77,7 @@ export function reduceOfficial(state, { type, data }) {
   if (type === 'scan_result') {
     if (!data || typeof data.IP !== 'string' || !data.IP || !Number.isInteger(data.Port) || data.Port < 1 || data.Port > 65535) return state;
     const row = {};
-    for (const key of ['IP', 'DataCenter', 'DCCountry', 'Region', 'City', 'LatencyStr']) row[key] = typeof data[key] === 'string' ? data[key] : '';
+    for (const key of ['IP', 'DataCenter', 'DCCountry', 'Region', 'City', 'LatencyStr', 'OriginalInput', 'originalInput']) row[key] = typeof data[key] === 'string' ? data[key] : '';
     row.Port = data.Port;
     row.latencyMS = Number.isFinite(data.TCPDuration) && data.TCPDuration >= 0 ? data.TCPDuration / 1000000 : null;
     const key = `${row.IP}:${row.Port}`;

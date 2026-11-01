@@ -1,6 +1,7 @@
-import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial } from './model.js';
+import { buildScanRequest, buildTestRequest, createOfficialState, reduceOfficial, getOfficialOutputRows } from './model.js';
 import { buildSpeedConfig, buildSpeedRequest, buildBatchRequest, buildAutoScanRequest, speedStatus } from '../measurement/model.js';
 import { mountResultBrowser } from '../results/controls.js';
+import { appendAddressActions } from '../results/output-view.js';
 
 export function mountOfficial({ root, monitor }) {
   let state = createOfficialState(), frame;
@@ -29,8 +30,11 @@ export function mountOfficial({ root, monitor }) {
     for (const index of scanPage.indexes) {
       const row=state.rows[index];
       const tr = root.createElement('tr');
-      for (const value of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', row.LatencyStr || (row.latencyMS === null ? '未知' : row.latencyMS.toFixed(2) + 'ms')]) {
-        const cell = root.createElement('td'); cell.textContent = String(value); tr.append(cell);
+      for (const [column,value] of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', row.LatencyStr || (row.latencyMS === null ? '未知' : row.latencyMS.toFixed(2) + 'ms')].entries()) {
+        const cell = root.createElement('td');
+        if (column < 2) appendAddressActions(cell,value,row.OriginalInput || row.originalInput,column === 0);
+        else cell.textContent = String(value);
+        tr.append(cell);
       }
       fragment.append(tr);
     }
@@ -54,8 +58,11 @@ export function mountOfficial({ root, monitor }) {
     for (const index of detailPage.indexes) {
       const row=state.testRows[index];
       const tr = root.createElement('tr');
-      for (const value of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', milliseconds(row.minMS), milliseconds(row.maxMS), milliseconds(row.avgMS), row.lossPercent === null ? '未知' : row.lossPercent.toFixed(2) + '%', row.Speed || '未测速']) {
-        const cell = root.createElement('td'); cell.textContent = String(value); tr.append(cell);
+      for (const [column,value] of [row.IP, row.Port, row.DataCenter || '—', [row.DCCountry, row.Region, row.City].filter(Boolean).join(' / ') || '—', milliseconds(row.minMS), milliseconds(row.maxMS), milliseconds(row.avgMS), row.lossPercent === null ? '未知' : row.lossPercent.toFixed(2) + '%', row.Speed || '未测速'].entries()) {
+        const cell = root.createElement('td');
+        if (column < 2) appendAddressActions(cell,value,row.OriginalInput || row.originalInput,column === 0);
+        else cell.textContent = String(value);
+        tr.append(cell);
       }
       const speed = root.createElement('td');
       const tag = root.createElement('span');
@@ -118,6 +125,8 @@ export function mountOfficial({ root, monitor }) {
   speedForm.elements.url.addEventListener('input', () => { speedForm.elements.preset.value = 'custom'; });
   render();
   return {
+    getOutputRows: type => getOfficialOutputRows(state,type),
+    getSpeedMin: () => Number(speedForm.elements.speedMin.value) || .1,
     onState(value) {
       if (value !== 'connected') {
         state = reduceOfficial(state, { type: 'connection_lost' });

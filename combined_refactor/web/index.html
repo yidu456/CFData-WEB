@@ -50,6 +50,7 @@
           <button class="button" type="button" data-task-action="refresh" disabled>刷新状态</button>
         </div>
       </div>
+      <p class="sub" role="status" data-output-feedback></p>
       <section id="workbench-panel" data-panel="workbench" aria-labelledby="workbench-title">
         <div class="title-row">
           <div><h1 id="workbench-title" tabindex="-1">优选工作台</h1><p class="sub">配置与结果并行查看，官方与非标保留各自的工作流。</p></div>
@@ -118,24 +119,24 @@
           </section>
           <section class="surface results-surface" data-results-mode="official" aria-labelledby="results-title">
             <div class="surface-header"><h2 id="results-title">官方扫描结果</h2><span class="pending-label">实时数据</span></div>
-            <div class="surface-body"><p class="sub" data-official-count>尚无扫描结果</p></div>
+            <div class="surface-body"><p class="sub" data-official-count>尚无扫描结果</p><div class="task-actions"><button class="button" type="button" data-output-type="scan" data-output-kind="copy">批量复制</button><button class="button" type="button" data-output-type="scan" data-output-kind="export">导出 TXT/CSV</button></div></div>
             <div class="result-browser" data-browse="scan"></div>
             <div class="scan-table-wrap" tabindex="0" role="region" aria-label="官方扫描表格，可横向滚动">
               <table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">延迟</th></tr></thead><tbody data-official-rows></tbody></table>
             </div>
             <div class="surface-body"><h3>数据中心汇总</h3><div class="dc-choices" data-official-centers></div><p class="sub" data-official-selection>扫描完成后选择数据中心</p><button class="button button-primary detail-test-button" type="button" data-official-test disabled>开始详细测试</button><p class="sub">TCPing 测试 10 次，HTTPing 测试 3 次；使用当前端口、合格延迟与测量方式。停止后保留已收到的结果。</p></div>
             <div class="surface-header"><h2>详细测试结果</h2><div class="task-actions"><button class="button" data-speed-batch type="button" disabled>一键测速</button><button class="button" data-speed-continue type="button" disabled>继续测速</button></div></div>
-            <div class="surface-body"><p class="sub" data-official-test-count>尚无详细测试结果</p></div>
+            <div class="surface-body"><p class="sub" data-official-test-count>尚无详细测试结果</p><div class="task-actions"><button class="button" type="button" data-output-type="detail" data-output-kind="copy">批量复制</button><button class="button" type="button" data-output-type="detail" data-output-kind="export">导出 TXT/CSV</button></div></div>
             <div class="result-browser" data-browse="detail"></div>
             <div class="scan-table-wrap" tabindex="0" role="region" aria-label="详细测试表格，可横向滚动"><table class="scan-table"><thead><tr><th scope="col">IP</th><th scope="col">端口</th><th scope="col">数据中心</th><th scope="col">位置</th><th scope="col">最小延迟</th><th scope="col">最大延迟</th><th scope="col">平均延迟</th><th scope="col">丢包率</th><th scope="col">测速值</th><th scope="col">状态与操作</th></tr></thead><tbody data-official-test-rows></tbody></table></div>
-            <footer class="surface-footer">全部复制、导出和发布操作仍可使用<a href="/">完整旧版</a>；非标与自动上传尚未迁移。</footer>
+            <footer class="surface-footer">表格筛选不改变测速和输出范围；复制与导出分别配置。发布与自动上传仍在<a href="/">完整旧版</a>。</footer>
           </section>
           <section class="surface results-surface" data-results-mode="nonstandard" aria-labelledby="nsb-results-title" hidden>
             <div class="surface-header"><h2 id="nsb-results-title">非标结果</h2><div class="task-actions"><button class="button" data-nsb-relink type="button" disabled>链路复验</button><button class="button" data-nsb-speed type="button" disabled>一键测速</button><button class="button" data-nsb-continue type="button" disabled>继续测速</button></div></div>
-            <div class="surface-body"><p class="sub" data-nsb-count>尚无非标结果</p></div>
+            <div class="surface-body"><p class="sub" data-nsb-count>尚无非标结果</p><div class="task-actions"><button class="button" type="button" data-output-type="nsb" data-output-kind="copy">批量复制</button><button class="button" type="button" data-output-type="nsb" data-output-kind="export">导出 TXT/CSV</button></div></div>
             <div class="result-browser" data-browse="nsb"></div>
             <div class="scan-table-wrap" tabindex="0" role="region" aria-label="非标全字段结果表格，可横向滚动"><table class="scan-table"><thead><tr data-nsb-headers></tr></thead><tbody data-nsb-rows></tbody></table></div>
-            <footer class="surface-footer">表格筛选与分页不改变全量测速/复验范围。复制、导出和发布仍在<a href="/">完整旧版</a>。</footer>
+            <footer class="surface-footer">表格筛选与分页不改变全量测速/复验范围。复制与导出独立配置；发布仍在<a href="/">完整旧版</a>。</footer>
           </section>
         </div>
       </section>
@@ -176,5 +177,28 @@
     <div class="dialog-actions"><button class="button" type="button" data-task-confirm-cancel>取消</button><button class="button button-primary" type="button" data-task-confirm-ok>确认</button></div>
   </dialog>
   <dialog data-nsb-confirm aria-labelledby="nsb-confirm-title"><h2 id="nsb-confirm-title">确认链路复验</h2><p>对全部当前非标结果复验 TCP/TLS/HTTP；不可用候选会被剔除。启用自动测速时，复验后会继续测速。确认继续？</p><div class="dialog-actions"><button class="button" data-nsb-confirm-cancel type="button">取消</button><button class="button button-primary" data-nsb-confirm-ok type="button">确认复验</button></div></dialog>
+  <dialog data-output-dialog class="output-dialog" aria-labelledby="output-title">
+    <h2 id="output-title">结果输出</h2><p class="sub">配置仅用于本次结果类型的复制或导出，与表格和发布账号无关；本页内保留，刷新后恢复默认。</p>
+    <form class="output-form">
+      <div class="output-grid">
+        <label data-export-only>文件格式<select name="format"><option value="txt">TXT</option><option value="csv">CSV</option></select></label>
+        <label data-export-only>文件名（自动追加时间戳）<input name="name" type="text"></label>
+        <label>开始行<input name="start" type="number" min="1" step="1" value="1" required></label>
+        <label>结束行<input name="end" type="number" min="1" step="1" value="20" required></label>
+        <label>地址族<select name="ipType"><option value="all">全部</option><option value="4">IPv4</option><option value="6">IPv6</option></select></label>
+        <label>测速状态<select name="qualified"><option value="all">全部</option><option value="qualified">达标</option><option value="unqualified">未达标 / 失败</option></select></label>
+        <label data-export-only>延迟严格低于（ms，0 不限）<input name="latency" type="number" min="0" value="0"></label>
+        <label data-export-only>丢包严格低于（%，100 不限）<input name="loss" type="number" min="0" max="100" value="100"></label>
+        <label>TXT 附加字段分隔符<select name="separatorPreset"><option value="-">短横线 -</option><option value="_">下划线 _</option><option value="|">竖线 |</option><option value="space">空格</option><option value="custom">自定义</option></select></label>
+        <label>自定义分隔符<input name="separator" type="text" value="-"></label>
+      </div>
+      <label class="output-check"><input name="brackets" type="checkbox" checked> IPv6 使用方括号</label>
+      <label>自定义常量<textarea name="custom" rows="2" placeholder="标签:内容, key=标题:内容"></textarea></label>
+      <fieldset><legend>字段与顺序</legend><p class="sub">TXT 始终以 IP:PORT 开头，再以 # 接选中的非空附加字段；CSV 按字段顺序输出。</p><div class="task-actions"><button class="button" type="button" data-output-preset="all">全选</button><button class="button" type="button" data-output-preset="ipport">仅 IP:PORT</button><button class="button" type="button" data-output-preset="default">默认字段</button></div><div data-output-fields></div></fieldset>
+      <label>输出预览<textarea data-output-preview rows="6" readonly spellcheck="false"></textarea></label>
+      <p class="sub" role="status" data-output-status></p>
+      <div class="dialog-actions"><button class="button" type="button" data-output-close>关闭</button><button class="button button-primary" type="button" data-output-execute disabled>执行输出</button></div>
+    </form>
+  </dialog>
 </body>
 </html>

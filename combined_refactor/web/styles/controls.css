@@ -13,6 +13,22 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .result-browser label { display: grid; gap: 4px; font-size: 12px; color: var(--cf-muted); }
 .result-browser input,.result-browser select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-surface); color: var(--cf-ink); padding: 8px; }
 .result-pager { grid-column: 1/-1; display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px; }
+.copy-address { background: transparent; border: 0; padding: 4px; color: var(--cf-brand); text-align: left; }
+.scan-table td a { display: inline-flex; align-items: center; min-height: 44px; padding: 4px 8px; font-size: 12px; }
+[data-source-hint] { color: var(--cf-muted); font-size: 11px; margin-inline: 5px; }
+.output-dialog { width: min(720px,calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); overflow: auto; box-sizing: border-box; }
+.output-form { display: grid; gap: 14px; }
+.output-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.output-form label { display: grid; gap: 5px; font-size: 12px; color: var(--cf-muted); }
+.output-form input:not([type='checkbox']),.output-form select,.output-form textarea { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-surface); color: var(--cf-ink); font: inherit; }
+.output-form textarea { resize: vertical; }
+.output-form fieldset { min-width: 0; margin: 0; border: 1px solid var(--cf-rule); border-radius: 6px; padding: 12px; }
+.output-form .output-check,.output-field label { display: flex; align-items: center; min-height: 44px; gap: 8px; }
+.output-field { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--cf-rule); }
+.output-field label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.output-field button { padding-inline: 8px; flex-shrink: 0; }
+[data-output-fields] { max-height: 260px; overflow: auto; margin-top: 12px; }
+@media (max-width: 480px) { .output-grid { grid-template-columns: minmax(0,1fr); } .output-dialog { padding: 16px; } }
 .button { display: inline-flex; align-items: center; justify-content: center; padding: 9px 14px; border: 1px solid var(--cf-rule); border-radius: 6px; background: var(--cf-surface); color: var(--cf-ink); text-decoration: none; text-align: center; }
 .button-primary { background: var(--cf-brand); color: var(--cf-onbrand); border-color: var(--cf-brand); }
 .button:hover { border-color: var(--cf-brand); }

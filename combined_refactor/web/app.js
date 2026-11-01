@@ -4,6 +4,7 @@ import { createSocketClient } from './api/socket.js';
 import { mountTasks } from './features/tasks/view.js';
 import { mountOfficial } from './features/official/view.js';
 import { mountNSB } from './features/nonstandard/view.js';
+import { mountResultOutput } from './features/results/output-view.js';
 
 let storage;
 try {
@@ -59,6 +60,10 @@ for (const button of modes) {
 const monitor = mountTasks({ root: document, client: { send: (...args) => client.send(...args) } });
 const official = mountOfficial({ root: document, monitor });
 const nonstandard = mountNSB({ root: document, monitor });
+const output = mountResultOutput({root:document,
+  getRows:type => type === 'nsb' ? nonstandard.getOutputRows() : official.getOutputRows(type),
+  getSpeedMin:type => type === 'nsb' ? nonstandard.getSpeedMin() : official.getSpeedMin(),
+});
 const client = createSocketClient({
   url: `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`,
   onState: value => {
@@ -67,7 +72,7 @@ const client = createSocketClient({
     nonstandard.onState(value);
     if (value === 'auth-required') window.location.assign('/auth/login');
   },
-  onMessage: message => { monitor.onMessage(message); official.onMessage(message); nonstandard.onMessage(message); },
+  onMessage: message => { monitor.onMessage(message); official.onMessage(message); nonstandard.onMessage(message); output.onMessage(message); },
   onError: monitor.onError,
 });
 client.start();

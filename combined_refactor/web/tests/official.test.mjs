@@ -4,6 +4,23 @@ import test from 'node:test';
 const load = async () => import('data:text/javascript;base64,' + Buffer.from(await readFile(new URL('../features/official/model.js', import.meta.url))).toString('base64'));
 const base = { ipType: '4', port: '443', threads: '100', delay: '500', scanMode: 'tcping' };
 
+test('official rows retain original input for source hints and full output', async () => {
+  const {createOfficialState,reduceOfficial} = await load();
+  for (const type of ['scan_result','test_result']) {
+    const state=reduceOfficial(createOfficialState(),{type,data:{IP:'192.0.2.1',Port:443,OriginalInput:'example.org'}});
+    assert.equal((type==='scan_result'?state.rows:state.testRows)[0].OriginalInput,'example.org');
+  }
+});
+test('scan output qualification joins measured endpoint without changing scan or task rows', async () => {
+  const {createOfficialState,reduceOfficial,getOfficialOutputRows} = await load();
+  let state=reduceOfficial(createOfficialState(),{type:'scan_result',data:{IP:'192.0.2.1',Port:443}});
+  state=reduceOfficial(state,{type:'test_result',data:{IP:'192.0.2.1',Port:443,Speed:'1MB/s'}});
+  assert.equal(getOfficialOutputRows(state,'scan')[0].Speed,'1MB/s');
+  assert.equal(state.rows[0].Speed,undefined);assert.equal(getOfficialOutputRows(state,'detail'),state.testRows);
+  state=reduceOfficial(state,{type:'test_complete',data:[{IP:'192.0.2.1',Port:8443,Speed:'2MB/s'}]});
+  assert.equal(getOfficialOutputRows(state,'scan')[0].Speed,'');
+});
+
 test('scan request validates existing families and ports, keeps zero delay', async () => {
   const { buildScanRequest } = await load();
   for (const port of [443,2053,2083,2087,2096,8443,80,8080,8880,2052,2082,2086,2095]) {
