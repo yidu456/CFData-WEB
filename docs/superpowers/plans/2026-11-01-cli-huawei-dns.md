@@ -24,7 +24,7 @@
 
 - [x] Read CLI, menu, selection, Huawei store, protocol/task callers and repository constraints.
 - [x] Write this plan and the accompanying spec; confirm every requirement maps to a task.
-- [ ] Commit only the spec and plan as `docs: plan CLI multi-center Huawei DNS workflow`.
+- [x] Commit only the spec and plan as `docs: plan CLI multi-center Huawei DNS workflow`.
 
 ## Task 1: One Scan And Combined Multi-Center CLI Testing
 
@@ -36,7 +36,7 @@
 - `runOfficialCLIMeasurements(*cliConfig, *appSession, cliOfficialDependencies) ([]ScanResult, []TestResult, error)` scans once, resolves automatic/selected centers, completes detail passes, then performs one combined speed pass.
 - `runOfficialCLI` keeps output behavior and calls this helper with real dependencies.
 
-- [ ] Write failing table tests for malformed/normalized center lists and a behavioral test whose fake scan populates HKG/NRT/SIN, detail results populate measured candidates, and combined speed input contains only HKG/NRT.
+- [x] Write failing table tests for malformed/normalized center lists and a behavioral test whose fake scan populates HKG/NRT/SIN, detail results populate measured candidates, and combined speed input contains only HKG/NRT.
 
 ```go
 centers, err := parseCLIDatacenters(" hkg,NRT,HKG ")
@@ -45,10 +45,10 @@ if err != nil || !reflect.DeepEqual(centers, []string{"HKG", "NRT"}) {
 }
 ```
 
-- [ ] Run `go test -run 'TestCLI(Datacenters|Official)' -count=1`; observe missing feature failure.
-- [ ] Move existing official orchestration to the helper, validate before scanning, keep blank automatic selection, process found centers sequentially with cache-preserving quiet detail testing, report missing centers, and sort the combined pool before one global speed pass. Cancellation returns an error and never proceeds to output publication.
-- [ ] Update `offdc` help/menu hints to accept `HKG,NRT`; preserve existing single/blank behavior.
-- [ ] Run focused/full tests and vet; build Windows preview check and Linux `release_assets/cfdata-test`; mark task complete and commit as `feat: support combined multi-center CLI measurements`.
+- [x] Run `go test -run 'TestCLI(Datacenters|Official)' -count=1`; observe missing feature failure.
+- [x] Move existing official orchestration to the helper, validate before scanning, keep blank automatic selection, process found centers sequentially with cache-preserving quiet detail testing, report missing centers, and sort the combined pool before one global speed pass. Cancellation returns an error and never proceeds to output publication.
+- [x] Update `offdc` help/menu hints to accept `HKG,NRT`; preserve existing single/blank behavior.
+- [x] Run focused/full tests and vet; build Windows preview check and Linux `release_assets/cfdata-test`; mark task complete and commit as `feat: support combined multi-center CLI measurements`.
 
 ## Task 2: Safe Ranked Huawei DNS Publication And CLI Config
 

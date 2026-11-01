@@ -550,7 +550,7 @@ func runSettingsWizard(fileCfg *cliFileConfig) int {
 			fileCfg.NSBDC = v
 		}
 	} else {
-		v, o := askLine("数据中心", dcCurrent, "格式: 数据中心代码（如 HKG/NRT）；输入 0=自动选择最低延迟数据中心")
+		v, o := askLine("数据中心", dcCurrent, "格式: 数据中心代码，多个用逗号分隔（如 HKG,NRT）；输入 0=自动选择最低延迟数据中心；全部合并测速")
 		if o != promptOK {
 			return o
 		}

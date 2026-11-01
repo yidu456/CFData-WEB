@@ -246,7 +246,7 @@ var (
 		{name: "offthreads", description: "官方模式扫描并发数", defaultValue: "100"},
 		{name: "offport", description: "官方模式详细测试与测速端口", defaultValue: "443"},
 		{name: "offdelay", description: "官方模式延迟阈值（毫秒）", defaultValue: "500"},
-		{name: "offdc", description: "指定数据中心；不填时自动选择最低延迟数据中心", defaultValue: ""},
+		{name: "offdc", description: "指定数据中心，多个用逗号分隔（如 HKG,NRT）；不填时自动选择最低延迟数据中心", defaultValue: ""},
 		{name: "offspeedlimit", description: "官方模式测速达标结果上限；0 表示关闭官方测速", defaultValue: "5"},
 		{name: "offspeedmin", description: "官方模式测速达标下限，单位 MB/s", defaultValue: "0.1"},
 		{name: "offurl", description: "官方模式测速下载地址；auto 表示由后端自动选择内置测速源", defaultValue: autoSpeedURLValue},
@@ -288,7 +288,7 @@ func registerCLIFlags() *cliConfig {
 	flag.IntVar(&cfg.port, "offport", 443, "目标测试端口")
 	flag.IntVar(&cfg.offDelay, "offdelay", 500, "官方延迟阈值（毫秒）")
 	flag.IntVar(&cfg.nsbDelay, "nsbdelay", 0, "非标延迟阈值（毫秒）；0 表示不筛延迟")
-	flag.StringVar(&cfg.dc, "offdc", "", "官方模式指定数据中心，不填则自动选择最低延迟数据中心")
+	flag.StringVar(&cfg.dc, "offdc", "", "官方模式指定数据中心，多个用逗号分隔（HKG,NRT）；不填则自动选择最低延迟数据中心")
 	flag.StringVar(&cfg.file, "nsbfile", "", "非标模式输入文件路径")
 	flag.StringVar(&cfg.sourceURL, "nsbsourceurl", "", "非标模式网络输入 URL")
 	flag.IntVar(&cfg.nsbFallbackPort, "nsbfallbackport", 0, "非标输入缺省端口；不填时随 TLS 自动使用 443/80")
@@ -787,7 +787,7 @@ func buildCLIConfigHelp() []cliConfigHelp {
 		{Name: "offport", Description: "官方模式测试端口", Default: "443"},
 		{Name: "offdelay", Description: "官方延迟阈值，单位毫秒", Default: "500"},
 		{Name: "nsbdelay", Description: "非标延迟阈值，单位毫秒；0=不筛延迟", Default: "0"},
-		{Name: "offdc", Description: "官方模式指定数据中心；留空自动选择最低延迟数据中心", Default: ""},
+		{Name: "offdc", Description: "官方模式指定数据中心，多个用逗号分隔（如 HKG,NRT）；留空自动选择最低延迟数据中心", Default: ""},
 		{Name: "offspeedlimit", Description: "官方模式测速达标结果上限；0 表示关闭官方测速", Default: "5"},
 		{Name: "offspeedmin", Description: "官方模式测速达标下限，单位 MB/s", Default: "0.1"},
 		{Name: "nsbfile", Description: "非标模式输入文件路径", Default: ""},
@@ -1166,58 +1166,12 @@ func runOfficialCLI(cfg *cliConfig) error {
 		cfg.speedMin = 0.1
 	}
 
-	scanMode := cfg.scanMode
-	if scanMode == "" {
-		scanMode = scanModeTCPing
-	}
-
 	session := newCLISession(cfg)
-	if err := session.runTaskSync(func(ctx context.Context, session *appSession) {
-		runOfficialTask(ctx, session, cfg.ipType, cfg.threads, cfg.port, cfg.delay, scanMode)
-	}); err != nil {
-		return cliTaskError(err)
+	scanResults, results, err := runOfficialCLIMeasurements(cfg, session, cliOfficialDependencies{Scan: runOfficialTask, Detail: runDetailedTest, Speed: runOfficialSpeedTests})
+	if err != nil {
+		return err
 	}
-
-	session.scanMutex.Lock()
-	scanResults := append([]ScanResult(nil), session.scanResults...)
-	session.scanMutex.Unlock()
-	if len(scanResults) == 0 {
-		return errors.New("官方模式未发现有效 IP")
-	}
-
-	dc := strings.TrimSpace(cfg.dc)
-	if dc == "" {
-		dc = pickBestDataCenter(scanResults)
-		if dc == "" {
-			fmt.Printf("%s[official]%s 无法确定数据中心，仅输出扫描结果\n", ansiYellow, ansiReset)
-			return writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialScanRows(scanResults, scanMode), cfg.speedMin), "official-scan")
-		}
-		fmt.Printf("%s[official]%s 自动选择数据中心: %s\n", ansiGreen, ansiReset, colorize(dc, ansiBold+ansiGreen))
-	}
-
-	session.testMutex.Lock()
-	session.testResults = nil
-	session.testMutex.Unlock()
-	if err := session.runTaskSync(func(ctx context.Context, session *appSession) {
-		runDetailedTest(ctx, session, dc, cfg.port, cfg.delay, scanMode)
-	}); err != nil {
-		return cliTaskError(err)
-	}
-
-	session.testMutex.Lock()
-	results := append([]TestResult(nil), session.testResults...)
-	session.testMutex.Unlock()
-	if cfg.speedLimit <= 0 {
-		fmt.Printf("%s[official]%s 官方测速已关闭（-offspeedlimit 0）\n", ansiYellow, ansiReset)
-	} else if len(results) == 0 {
-		fmt.Printf("%s[official]%s 没有可用的详细测试结果，跳过测速\n", ansiYellow, ansiReset)
-	} else {
-		sortOfficialTestResults(results)
-		setCLIProgress(session, "speed", 0, cfg.speedLimit)
-		fmt.Printf("%s[official]%s 开始测速：目标上限=%d，测速阈值=%.2fMB/s\n", ansiGreen, ansiReset, cfg.speedLimit, cfg.speedMin)
-		results = runOfficialSpeedTests(context.Background(), session, results, cfg.port, cfg.speedLimit, cfg.speedMin)
-	}
-	return writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scanResults, results, scanMode), cfg.speedMin), "official")
+	return writeCLIExportAndMaybeUpload(cfg, applyCLIExportFilters(cfg, officialResultRows(scanResults, results, cfg.scanMode), cfg.speedMin), "official")
 }
 
 func runNSBCLI(cfg *cliConfig) error {
